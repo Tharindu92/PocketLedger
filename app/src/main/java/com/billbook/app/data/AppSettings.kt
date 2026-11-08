@@ -1,0 +1,76 @@
+package com.billbook.app.data
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/** Small app-wide preferences, observable from Compose. */
+class AppSettings(context: Context) {
+    private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    var currency by mutableStateOf(prefs.getString(KEY_CURRENCY, DEFAULT_CURRENCY) ?: DEFAULT_CURRENCY)
+        private set
+
+    /** Printed at the top of exported statements. */
+    var businessName by mutableStateOf(prefs.getString(KEY_BUSINESS, "") ?: "")
+        private set
+
+    /** Package names of the banking / payment apps whose notifications are read. */
+    var watchedApps by mutableStateOf(prefs.getStringSet(KEY_WATCHED_APPS, emptySet())?.toSet() ?: emptySet())
+        private set
+
+    /** Also turn "you paid …" notifications into expenses (incomes are always detected). */
+    var detectExpenses by mutableStateOf(prefs.getBoolean(KEY_DETECT_EXPENSES, false))
+        private set
+
+    /** Add detected money straight away instead of waiting for the user to confirm. */
+    var autoAddDetected by mutableStateOf(prefs.getBoolean(KEY_AUTO_ADD, false))
+        private set
+
+    private val _activeProfileId = MutableStateFlow(prefs.getLong(KEY_ACTIVE_PROFILE, Profile.DEFAULT_ID))
+    /** Profile shown on the home screen and used for new entries. */
+    val activeProfileId: StateFlow<Long> = _activeProfileId.asStateFlow()
+
+    fun setActiveProfile(id: Long) {
+        _activeProfileId.value = id
+        prefs.edit().putLong(KEY_ACTIVE_PROFILE, id).apply()
+    }
+
+    fun update(currency: String, businessName: String) {
+        this.currency = currency.trim().uppercase().ifBlank { DEFAULT_CURRENCY }
+        this.businessName = businessName.trim()
+        prefs.edit()
+            .putString(KEY_CURRENCY, this.currency)
+            .putString(KEY_BUSINESS, this.businessName)
+            .apply()
+    }
+
+    fun updateWatchedApps(packages: Set<String>) {
+        watchedApps = packages.toSet()
+        prefs.edit().putStringSet(KEY_WATCHED_APPS, watchedApps).apply()
+    }
+
+    fun updateDetectExpenses(enabled: Boolean) {
+        detectExpenses = enabled
+        prefs.edit().putBoolean(KEY_DETECT_EXPENSES, enabled).apply()
+    }
+
+    fun updateAutoAdd(enabled: Boolean) {
+        autoAddDetected = enabled
+        prefs.edit().putBoolean(KEY_AUTO_ADD, enabled).apply()
+    }
+
+    private companion object {
+        const val KEY_CURRENCY = "currency"
+        const val KEY_BUSINESS = "business"
+        const val KEY_WATCHED_APPS = "watched_apps"
+        const val KEY_DETECT_EXPENSES = "detect_expenses"
+        const val KEY_AUTO_ADD = "auto_add_detected"
+        const val KEY_ACTIVE_PROFILE = "active_profile"
+        const val DEFAULT_CURRENCY = "LKR"
+    }
+}

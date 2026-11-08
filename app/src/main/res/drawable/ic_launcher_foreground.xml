@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A simple receipt glyph inside the adaptive-icon safe zone -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,30 L70,30 L70,76 L66,73 L62,76 L58,73 L54,76 L50,73 L46,76 L42,73 L38,76 Z" />
+    <path
+        android:fillColor="#1B6B50"
+        android:pathData="M44,39 h20 v3 h-20 Z M44,47 h20 v3 h-20 Z M44,55 h12 v3 h-12 Z M58,62 h6 v3 h-6 Z" />
+</vector>
