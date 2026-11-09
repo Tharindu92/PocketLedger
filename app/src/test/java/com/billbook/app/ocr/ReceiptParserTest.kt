@@ -96,6 +96,163 @@ class ReceiptParserTest {
         assertEquals(250000L, ReceiptParser.parse(lines, today).totalCents)
     }
 
+    // Real ML Kit output for two photos of a Sri Lankan government receipt lying on a newspaper
+    // (personal values replaced). Newspaper text surrounds the receipt, the receipt number sits
+    // under its label with a stray speck ("d") in between, the date lost both slashes
+    // ("20261028 09:05") and in photo B the total "2,500.00" was read as "2.500.00".
+    private val photoA = listOf(
+        OcrLine("hed eftects of sus-", 408, -6, 1021, 116),
+        OcrLine("conomicowth and targeted wel", 6, 22, 985, 187),
+        OcrLine("Iventio, Desnie", 12, 109, 576, 212),
+        OcrLine("bolarisat", 6, 189, 268, 271),
+        OcrLine("ensior", -2, 258, 201, 341),
+        OcrLine("devel", 4, 344, 169, 415),
+        OcrLine("bgnis", -5, 415, 158, 490),
+        OcrLine("uct", 42, 494, 132, 566),
+        OcrLine("d", 31, 724, 60, 786),
+        OcrLine("rea", 42, 1763, 149, 1818),
+        OcrLine("tal", 70, 2089, 159, 2155),
+        OcrLine("Receipt", 394, 266, 696, 350),
+        OcrLine("App. No.", 389, 624, 711, 772),
+        OcrLine("Name", 326, 888, 562, 956),
+        OcrLine("DEPARTMENT FOR REGISTRATION OF PERSONS", 621, 302, 2574, 488),
+        OcrLine("DRP Ref No.", 302, 1104, 886, 1202),
+        OcrLine("Payment Mode:", 336, 1360, 979, 1464),
+        OcrLine("# Description", 388, 1592, 941, 1683),
+        OcrLine("Shroff:", 270, 2894, 528, 2971),
+        OcrLine("DRPENIdA1B23C45", 1024, 753, 1860, 853),
+        OcrLine("PERERA A.", 1036, 905, 1341, 996),
+        OcrLine("26HINO123456", 1008, 1220, 1601, 1310),
+        OcrLine("ONE DAY SERVICE FEE", 496, 1776, 1436, 1878),
+        OcrLine("RENEW APPLICAION FEE", 504, 1930, 1586, 2027),
+        OcrLine("C1000", 549, 2957, 783, 3030),
+        OcrLine("CASH", 1040, 1446, 1264, 1510),
+        OcrLine("Received with thanks a sum of", 286, 2581, 1420, 2701),
+        OcrLine("Hundred Rupees Only.", 401, 2725, 1300, 2842),
+        OcrLine("Receipt No.:", 1675, 599, 2332, 728),
+        OcrLine("12600000123", 2044, 779, 2554, 877),
+        OcrLine("Receipt Date", 1622, 1119, 2175, 1226),
+        OcrLine("Total", 1757, 2478, 1961, 2554),
+        OcrLine("20261028 09:05", 2046, 1235, 2696, 1319),
+        OcrLine("286", 2151, 1398, 2367, 1486),
+        OcrLine("Amount", 2207, 1621, 2535, 1693),
+        OcrLine("2.000.00", 2418, 1820, 2754, 1892),
+        OcrLine("500.00", 2494, 1972, 2758, 2044),
+        OcrLine("2,500.00", 2427, 2514, 2773, 2600),
+        OcrLine("Two Thousand Flve", 1824, 2665, 2596, 2747),
+        OcrLine("3100000", 1950, 2812, 2615, 2968),
+        OcrLine("Please quote above Application Number when making inquiries.", 424, 3081, 2577, 3239),
+        OcrLine("This is a computer generated receipt & requires no signatures", 461, 3184, 2534, 3343),
+        OcrLine("Contact: (011) 5226126", 280, 3298, 1083, 3433),
+        OcrLine("Department of Government", 3025, 1583, 3063, 1944),
+    )
+
+    private val photoB = listOf(
+        OcrLine("as Wellas the Generl co", 4, -2, 827, 74),
+        OcrLine("lctes communities thar", 25, 61, 811, 155),
+        OcrLine("these classifications. per ceht for teneral category. Over thne", 9, -40, 2444, 279),
+        OcrLine("T community had the", 70, 222, 764, 306),
+        OcrLine("Receipt", 299, 406, 618, 495),
+        OcrLine("J App. No.", 41, 792, 627, 957),
+        OcrLine("Name", 247, 1047, 495, 1115),
+        OcrLine("DRP Ref. No.", 231, 1286, 769, 1368),
+        OcrLine("DEPARTMENT T FOR REGISTRATION OF PERSONS", 548, 483, 2478, 662),
+        OcrLine("Payment Mode:", 223, 1534, 914, 1629),
+        OcrLine("atdrOpped t", 957, 33, 1442, 114),
+        OcrLine("ighest", 787, 191, 1000, 256),
+        OcrLine("mt. foL", 809, 264, 998, 335),
+        OcrLine("# Description", 325, 1761, 872, 1853),
+        OcrLine("Same period verty among urban STs", 1095, 73, 2453, 261),
+        OcrLine("o0 2 Der cent to 9.9 per", 1691, 168, 2454, 269),
+        OcrLine("Shroff:", 188, 3061, 443, 3138),
+        OcrLine("C1000", 457, 3119, 687, 3206),
+        OcrLine("DRPENIdA1B23C45", 960, 932, 1784, 1028),
+        OcrLine("PERERA A.", 974, 1068, 1276, 1168),
+        OcrLine("26HINOb23456", 940, 1373, 1535, 1477),
+        OcrLine("ONE DAY SERVICE FEE", 434, 1948, 1390, 2042),
+        OcrLine("CASH", 976, 1613, 1200, 1677),
+        OcrLine("RENEW APPLICAION FEE", 442, 2103, 1502, 2179),
+        OcrLine("Received with thanks a sum of", 225, 2748, 1338, 2864),
+        OcrLine("Hundred Rupees Only.", 332, 2885, 1230, 3017),
+        OcrLine("Receipt No.", 1558, 788, 2059, 903),
+        OcrLine("12600000123", 1970, 955, 2463, 1054),
+        OcrLine("Receipt Date", 1596, 1290, 2118, 1403),
+        OcrLine("Total", 1680, 2637, 1895, 2718),
+        OcrLine("20261028 09:05", 1931, 1393, 2611, 1488),
+        OcrLine("286", 2080, 1565, 2296, 1649),
+        OcrLine("Amount", 2142, 1780, 2470, 1853),
+        OcrLine("2.000.00", 2358, 1980, 2706, 2048),
+        OcrLine("500.00", 2442, 2119, 2714, 2201),
+        OcrLine("2.500.00", 2390, 2677, 2766, 2757),
+        OcrLine("Two Thousand Fve", 1759, 2823, 2570, 2934),
+        OcrLine("3100000", 1878, 2982, 2603, 3157),
+        OcrLine("Please quote above Application Number when making inquiries.", 324, 3249, 2575, 3456),
+        OcrLine("This is a computer generated receipt & requires no signatures", 355, 3360, 2524, 3570),
+        OcrLine("Contact: (011) 5226126", 178, 3483, 959, 3633),
+        OcrLine("CM-044274c - Department of Government PTInting", 2967, 1501, 3037, 2213),
+    )
+
+    private fun assertGovernmentReceipt(lines: List<OcrLine>, expectedMerchant: String) {
+        val r = ReceiptParser.parse(lines, today, homeCurrency = "LKR")
+        assertEquals(expectedMerchant, r.merchant)
+        assertEquals("12600000123", r.billNumber)
+        assertEquals(250000L, r.totalCents)
+        assertEquals(LocalDate.of(2026, 10, 28), r.date)
+        assertEquals("Cash", r.paymentMethod)
+        assertEquals("LKR", r.currency)
+        assertEquals("Government & Fees", r.category)
+    }
+
+    @Test
+    fun governmentReceiptPhotoA() =
+        assertGovernmentReceipt(photoA, "DEPARTMENT FOR REGISTRATION OF PERSONS")
+
+    @Test
+    fun governmentReceiptPhotoB() =
+        assertGovernmentReceipt(photoB, "DEPARTMENT T FOR REGISTRATION OF PERSONS")
+
+    @Test
+    fun amountsWithDotThousandSeparators() {
+        assertEquals(listOf(250000L), ReceiptParser.amountsIn("Total  2.500.00"))
+        assertEquals(125000L, ReceiptParser.amountsIn("Summe 1.250,00").single())
+    }
+
+    /** Real OCR output of a German restaurant bill scanned on the phone. */
+    @Test
+    fun germanRestaurantBill() {
+        val text = """
+            Pizza Hut # 127
+            Lerchenauer Strasse 42
+            80809 München
+            Kellner: Maria E
+            Tisch 26/1
+            Gäste: 3
+            ***ZWISCHENRECHNUNG***
+            Bestellart: Im Haus
+            Bereich: Restaurant
+            Limo American Straw-Lemon
+            Margherita Pan S
+            3 Items
+            Chicken Supr Cheezy Crust
+            Zwischensumme
+            Steuer
+            27/09/2026
+            Summe38.20
+        """.trimIndent()
+
+        val r = ReceiptParser.parseText(text, today, homeCurrency = "EUR")
+
+        assertEquals("Pizza Hut # 127", r.merchant)
+        assertEquals(3820L, r.totalCents)
+        assertEquals(LocalDate.of(2026, 9, 27), r.date)
+    }
+
+    @Test
+    fun receiptNumberBeatsReferenceNumber() {
+        val r = ReceiptParser.parseText("Shop\nRef No: 5555\nReceipt No: 1234", today)
+        assertEquals("1234", r.billNumber)
+    }
+
     @Test
     fun amountsIgnoreDatesAndPercentages() {
         assertEquals(emptyList<Long>(), ReceiptParser.amountsIn("Date 12.05.24 VAT 18.00%"))

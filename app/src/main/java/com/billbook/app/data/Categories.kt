@@ -16,6 +16,7 @@ object Categories {
         "Marketing",
         "Medical",
         "Bank Charges",
+        "Government & Fees",
         "Other",
     )
 

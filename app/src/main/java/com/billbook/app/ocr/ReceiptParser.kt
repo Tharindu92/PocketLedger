@@ -41,13 +41,14 @@ object ReceiptParser {
         today: LocalDate = LocalDate.now(),
         homeCurrency: String = "LKR",
     ): ParsedReceipt {
-        val rows = groupIntoRows(lines)
+        val rowLines = groupLines(lines)
+        val rows = rowLines.map(::joinRow)
         val total = findTotal(rows)
         return ParsedReceipt(
             totalCents = total,
             taxCents = findTax(rows, total),
-            billNumber = findBillNumber(rows),
-            merchant = findMerchant(rows),
+            billNumber = findBillNumber(rowLines),
+            merchant = findMerchant(rowLines),
             date = findDate(rows, today),
             paymentMethod = findPaymentMethod(rows),
             category = guessCategory(rows),
@@ -114,7 +115,12 @@ object ReceiptParser {
 
     // ---------------------------------------------------------------- rows
 
-    internal fun groupIntoRows(lines: List<OcrLine>): List<String> {
+    internal fun groupIntoRows(lines: List<OcrLine>): List<String> = groupLines(lines).map(::joinRow)
+
+    private fun joinRow(row: List<OcrLine>): String = row.joinToString("  ") { it.text.trim() }
+
+    /** Visual rows, top to bottom; the lines inside each row are sorted left to right. */
+    internal fun groupLines(lines: List<OcrLine>): List<List<OcrLine>> {
         val rows = mutableListOf<MutableList<OcrLine>>()
         for (line in lines.filter { it.text.isNotBlank() }.sortedBy { it.centerY }) {
             val row = rows.lastOrNull()
@@ -128,20 +134,21 @@ object ReceiptParser {
             }
             rows.add(mutableListOf(line))
         }
-        return rows.map { row -> row.sortedBy { it.left }.joinToString("  ") { it.text.trim() } }
+        return rows.map { row -> row.sortedBy { it.left } }
     }
 
     // ------------------------------------------------------------- amounts
 
-    // 1,234.56 | 1234.56 | 1234,56 — but not dates (12.05.24), percentages (18.00%) or long ids.
+    // 1,234.56 | 1234.56 | 1234,56 | 1.234,56 (German) | 2.500.00 (OCR misreading a comma as a dot)
+    // — but not dates (12.05.24), percentages (18.00%) or long ids.
     private val DECIMAL_AMOUNT =
-        Regex("""(?<!\d)(?<!\d[.,])(\d{1,3}(?:,\d{3})+|\d{1,9})[.,](\d{2})(?!\d)(?![.,]\d)(?!\s*%)""")
+        Regex("""(?<!\d)(?<!\d[.,])(\d{1,3}(?:[.,]\d{3})+|\d{1,9})[.,](\d{2})(?!\d)(?![.,]\d)(?!\s*%)""")
     private val INTEGER_AMOUNT = Regex("""(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d{1,9})(?![\d.,])(?!\s*%)""")
     private val CURRENCY_TOKENS = Regex("""(?i)\b(rs|lkr|slr|usd|inr|eur|gbp|aud|sgd|cad|nzd|aed|myr|rm|pkr)\b|[$€£₹¥฿]""")
 
     internal fun amountsIn(row: String): List<Long> =
         DECIMAL_AMOUNT.findAll(row).mapNotNull { m ->
-            val whole = m.groupValues[1].replace(",", "").toLongOrNull() ?: return@mapNotNull null
+            val whole = m.groupValues[1].replace(",", "").replace(".", "").toLongOrNull() ?: return@mapNotNull null
             whole * 100 + m.groupValues[2].toLong()
         }.toList()
 
@@ -209,45 +216,138 @@ object ReceiptParser {
 
     // ---------------------------------------------------------- bill number
 
+    private const val BILL_WORDS = "invoice|inv|bill|receipt|rcpt|ref|order|txn|trans|transaction|voucher|doc"
+    private const val NUMBER_WORDS = "no|num|number|nbr|id|#"
     private val BILL_NO = Regex(
-        """\b(?:invoice|inv|bill|receipt|rcpt|ref|order|txn|trans|transaction|voucher|doc)\b\.?\s*""" +
-            """(?:no|num|number|nbr|id|#)?\.?\s*[:#\-]?\s*#?\s*([A-Za-z0-9][A-Za-z0-9\-/]{2,24})""",
+        """\b($BILL_WORDS)\b\.?\s*(?:$NUMBER_WORDS)?\.?\s*[:#\-]?\s*#?\s*([A-Za-z0-9][A-Za-z0-9\-/]{2,24})""",
         RegexOption.IGNORE_CASE,
     )
+    /** A label with its value printed elsewhere, e.g. "Receipt No. :" with the number on the next row. */
+    private val BILL_LABEL_ONLY = Regex(
+        """\b($BILL_WORDS)\b\.?\s*(?:$NUMBER_WORDS)\.?\s*[:#\-]?\s*$""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val VALUE_TOKEN = Regex("""[A-Za-z0-9][A-Za-z0-9\-/]{2,24}""")
     private val LOOKS_LIKE_DATE = Regex("""^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$""")
+    private val PUNCTUATION_ONLY = Regex("""^[\s:#\-.]*$""")
 
-    internal fun findBillNumber(rows: List<String>): String? {
-        for (row in rows) {
-            for (m in BILL_NO.findAll(row)) {
-                val value = m.groupValues[1].trimEnd('-', '/')
-                if (value.any { it.isDigit() } && !LOOKS_LIKE_DATE.matches(value)) return value
+    /** Lower is better: a receipt/invoice number beats an order number, which beats a reference. */
+    private fun billRank(word: String) = when (word.lowercase()) {
+        "invoice", "inv", "bill", "receipt", "rcpt" -> 0
+        "ref" -> 2
+        else -> 1
+    }
+
+    private fun isBillValue(value: String) =
+        value.any { it.isDigit() } && !LOOKS_LIKE_DATE.matches(value) && amountsIn(value).isEmpty()
+
+    internal fun findBillNumber(rows: List<List<OcrLine>>): String? {
+        data class Candidate(val rank: Int, val row: Int, val value: String)
+        val candidates = mutableListOf<Candidate>()
+
+        rows.forEachIndexed { i, row ->
+            // 1. Value on the same row: "Bill No: 004512".
+            for (m in BILL_NO.findAll(joinRow(row))) {
+                val value = m.groupValues[2].trimEnd('-', '/')
+                if (isBillValue(value)) candidates += Candidate(billRank(m.groupValues[1]), i, value)
+            }
+            // 2. Value printed under the label, as in two-column forms:
+            //    "App. No. :        Receipt No. :"
+            //    "DRPENIA1B23C45    12600000123"
+            //    Stray specks from the photo background can land on a line of their own in
+            //    between, so up to three lines below are tried.
+            val labels = row.filterNot { PUNCTUATION_ONLY.matches(it.text) }
+            labels.forEachIndexed { column, label ->
+                val m = BILL_LABEL_ONLY.find(label.text) ?: return@forEachIndexed
+                for (next in rows.subList(i + 1, minOf(rows.size, i + 4))) {
+                    val values = next.filterNot { PUNCTUATION_ONLY.matches(it.text) }
+                    // Same column when both rows have the same number of cells, otherwise the
+                    // value that starts closest to where the label ends.
+                    val cell = (if (labels.size == values.size) values[column]
+                    else values.minByOrNull { abs(it.left - label.right) }) ?: continue
+                    val value = VALUE_TOKEN.findAll(cell.text).map { it.value.trimEnd('-', '/') }
+                        .firstOrNull(::isBillValue) ?: continue
+                    candidates += Candidate(billRank(m.groupValues[1]), i, value)
+                    break
+                }
             }
         }
-        return null
+        return candidates.minWithOrNull(compareBy({ it.rank }, { it.row }))?.value
     }
 
     // ------------------------------------------------------------- merchant
 
     private val MERCHANT_SKIP = Regex(
         """\b(receipt|invoice|tax|vat|gst|tel|phone|fax|mobile|hotline|date|time|cashier|counter|""" +
-            """terminal|pos|thank|bill|order|table|www|http|email|reg|no)\b|@|\.com|\.lk""",
+            """terminal|pos|thank|thanks|bill|order|table|www|http|email|reg|no|total|subtotal|sum|summe|""" +
+            """amount|balance|cash|change|qty|description|item|items|quittung|beleg|kassenbon|""" +
+            """steuer|mwst|ust|kasse|tisch|kellner)\b|rechnung\b|@|\.com|\.lk""",
         RegexOption.IGNORE_CASE,
     )
     private val WELCOME = Regex("""^\s*welcome\s+to\s+""", RegexOption.IGNORE_CASE)
     private val MULTI_SPACE = Regex("""\s{2,}""")
+    /** Document titles printed above or beside the business name. */
+    private val TITLE_PREFIX = Regex(
+        """^\s*(?:tax\s+invoice|cash\s+receipt|official\s+receipt|sales\s+receipt|receipt|invoice|bill)\b[\s:.\-]*""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val ORGANISATION_WORDS = Regex(
+        """\b(department|dept|ministry|office|authority|board|council|corporation|commission|bureau|agency|""" +
+            """registry|registrar|municipal|government|secretariat|company|ltd|limited|pvt|plc|inc|llc|gmbh|""" +
+            """ag|kg|ohg|ug|bank|hospital|university|institute|college|school|society|association|club|trust|""" +
+            """foundation|stores?|shop|mart|market|supermarket|traders|trading|enterprises?|holdings|group)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val WORD = Regex("""\p{L}+""")
 
-    internal fun findMerchant(rows: List<String>): String? {
-        for (raw in rows.take(8)) {
-            val row = WELCOME.replace(raw, "").replace(MULTI_SPACE, " ").trim()
-                .trim('*', '-', '=', '.', ',', ':', ' ')
-            if (row.isEmpty() || MERCHANT_SKIP.containsMatchIn(row)) continue
-            val letters = row.count { it.isLetter() }
-            val digits = row.count { it.isDigit() }
-            if (letters < 3 || digits > letters / 2) continue
-            if (amountsIn(row).isNotEmpty()) continue
-            return row.take(60)
+    /**
+     * Picks the business name from the top of the bill. Each candidate line gets a score instead of
+     * simply taking the first one, so stray text in the photo (a newspaper under the receipt, a torn
+     * header) loses to a line that looks like a business name.
+     *
+     * Each OCR line is judged on its own rather than the whole visual row, so a speck of background
+     * text that happens to sit level with the name ("devel  DEPARTMENT FOR …") is not glued onto it.
+     */
+    internal fun findMerchant(rows: List<List<OcrLine>>): String? {
+        var best: String? = null
+        var bestScore = Int.MIN_VALUE
+        var candidateIndex = 0
+        var afterTitle = false
+
+        for (rowLines in rows.take(14)) {
+            val followsTitle = afterTitle
+            afterTitle = false
+            for (line in rowLines) {
+                val raw = line.text
+                val withoutTitle = TITLE_PREFIX.replace(raw, "")
+                if (withoutTitle.isBlank() && withoutTitle.length < raw.length) afterTitle = true
+                val text = WELCOME.replace(withoutTitle, "").replace(MULTI_SPACE, " ").trim()
+                    .trim('*', '-', '=', '.', ',', ':', ' ')
+                if (text.isEmpty() || MERCHANT_SKIP.containsMatchIn(text) || text.contains(':')) continue
+                val letters = text.count { it.isLetter() }
+                val digits = text.count { it.isDigit() }
+                if (letters < 3 || digits > letters / 2) continue
+                if (amountsIn(text).isNotEmpty()) continue
+
+                val words = WORD.findAll(text).map { it.value }.toList()
+                val upperShare = text.count { it.isUpperCase() }.toDouble() / letters
+                val lowercaseWords = words.count { it.first().isLowerCase() }
+                var score = maxOf(0, 2 - candidateIndex)          // earlier lines are a little more likely
+                if (upperShare >= 0.8 && letters >= 4) score += 3  // names are often printed in capitals
+                if (ORGANISATION_WORDS.containsMatchIn(text)) score += 4
+                if (followsTitle) score += 2                       // the line right under "Receipt" / "Invoice"
+                if (words.size >= 3 && lowercaseWords >= words.size * 0.6) score -= 4  // running sentence text
+                if (raw.trimEnd().endsWith('-')) score -= 2        // hyphenated word, i.e. printed paragraph
+                if (words.size > 8) score -= 2
+                candidateIndex++
+
+                if (score > bestScore) {
+                    bestScore = score
+                    best = text.take(60)
+                }
+            }
         }
-        return null
+        return best.takeIf { bestScore >= 0 }
     }
 
     // ----------------------------------------------------------------- date
@@ -264,10 +364,31 @@ object ReceiptParser {
         RegexOption.IGNORE_CASE,
     )
 
+    /** OCR slips in a year-first date: the second separator dropped or read as 1/l/I/|. */
+    private val DATE_YMD_LOOSE = Regex("""(?<!\d)(20\d{2})\s?[-/.]\s?(\d{1,2})\s?[-/.1lI|]?\s?(\d{2})(?!\d)""")
+    /** Both separators dropped ("20261028"); only trusted next to a "Date" label. */
+    private val DATE_YMD_COMPACT = Regex("""(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)""")
+    /** A time glued to the date, e.g. "2026/10/2809:05". */
+    private val TIME_STUCK_TO_DATE = Regex("""(\d)(\d{1,2}:\d{2})""")
+
     internal fun findDate(rows: List<String>, today: LocalDate): LocalDate? {
-        // Rows that say "date" are the most reliable, then everything else.
-        val ordered = rows.filter { it.contains("date", ignoreCase = true) } + rows
+        val cleaned = rows.map { TIME_STUCK_TO_DATE.replace(it, "$1 $2") }
+        // Rows that say "date" (and the row under them, where two-column forms put the value) are
+        // the most reliable, then everything else.
+        val nearLabel = cleaned.indices.filter { cleaned[it].contains("date", ignoreCase = true) }
+            .flatMap { listOfNotNull(cleaned[it], cleaned.getOrNull(it + 1)) }
+        val ordered = nearLabel + cleaned
         for (row in ordered) dateIn(row, today)?.let { return it }
+        for (row in ordered) {
+            DATE_YMD_LOOSE.findAll(row).forEach { m ->
+                validDate(m.int(1), m.int(2), m.int(3), today)?.let { return it }
+            }
+        }
+        for (row in nearLabel) {
+            DATE_YMD_COMPACT.findAll(row).forEach { m ->
+                validDate(m.int(1), m.int(2), m.int(3), today)?.let { return it }
+            }
+        }
         return null
     }
 
@@ -329,6 +450,8 @@ object ReceiptParser {
         "Travel" to """\b(airline|airways|flight|booking|guest house|resort)\b""",
         "Software & Subscriptions" to """\b(software|subscription|hosting|domain|cloud|saas|license|licence)\b""",
         "Office Supplies" to """\b(stationery|stationary|bookshop|printing|office supplies|toner)\b""",
+        "Government & Fees" to """\b(department|ministry|government|municipal|secretariat|registration of persons|""" +
+            """passport|immigration|motor traffic|stamp duty|finanzamt|b[üu]rgeramt|ausländerbehörde)\b""",
     ).map { (category, pattern) -> category to Regex(pattern, RegexOption.IGNORE_CASE) }
 
     internal fun guessCategory(rows: List<String>): String? {
