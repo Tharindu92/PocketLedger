@@ -15,6 +15,7 @@ import com.billbook.app.ui.bank.AppPickerScreen
 import com.billbook.app.ui.bank.BankScreen
 import com.billbook.app.ui.edit.EditScreen
 import com.billbook.app.ui.home.HomeScreen
+import com.billbook.app.ui.importer.ImportScreen
 import com.billbook.app.ui.statement.StatementScreen
 
 @Composable
@@ -35,7 +36,15 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 onStatement = { nav.navigate("statement") },
                 onBank = { nav.navigate("bank") },
                 onProfiles = { nav.navigate("profiles") },
+                onImportStatement = { uri -> nav.navigate("import?uri=${Uri.encode(uri.toString())}") },
             )
+        }
+        composable(
+            route = "import?uri={uri}",
+            arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" }),
+        ) { entry ->
+            val uri = Uri.parse(entry.arguments?.getString("uri").orEmpty())
+            ImportScreen(uri = uri, onDone = { nav.popBackStack() })
         }
         composable("profiles") {
             ProfilesScreen(onBack = { nav.popBackStack() })

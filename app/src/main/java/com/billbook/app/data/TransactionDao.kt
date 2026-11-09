@@ -21,6 +21,13 @@ interface TransactionDao {
     )
     suspend fun listBetween(profileId: Long, fromDay: Long, toDay: Long): List<Transaction>
 
+    /** Entries of every profile in a date range, for spotting bookings that are already recorded. */
+    @Query("SELECT * FROM transactions WHERE dateEpochDay BETWEEN :fromDay AND :toDay")
+    suspend fun allBetween(fromDay: Long, toDay: Long): List<Transaction>
+
+    @Upsert
+    suspend fun upsertAll(transactions: List<Transaction>)
+
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun get(id: Long): Transaction?
 

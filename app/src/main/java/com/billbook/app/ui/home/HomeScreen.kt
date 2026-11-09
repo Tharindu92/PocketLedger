@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -109,6 +110,7 @@ fun HomeScreen(
     onStatement: () -> Unit,
     onBank: () -> Unit,
     onProfiles: () -> Unit,
+    onImportStatement: (Uri) -> Unit = {},
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -121,6 +123,9 @@ fun HomeScreen(
     val settings = (context.applicationContext as BillBookApp).settings
     var showSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    val pickStatement = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onImportStatement(uri)
+    }
     var pendingPhoto by rememberSaveable { mutableStateOf<String?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
@@ -298,6 +303,18 @@ fun HomeScreen(
             }
             SheetOption(Icons.Default.PhotoLibrary, "Upload a bill photo", "Pick an existing photo from the gallery") {
                 showSheet = false; pickFromGallery()
+            }
+            SheetOption(
+                Icons.Default.AccountBalance,
+                "Import bank statement",
+                "CSV or PDF from your bank — choose which bookings go to which profile",
+            ) {
+                showSheet = false
+                try {
+                    pickStatement.launch(STATEMENT_TYPES)
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, "No file manager available", Toast.LENGTH_SHORT).show()
+                }
             }
             SheetOption(Icons.Default.Edit, "Add expense manually", null) {
                 showSheet = false; onAdd(TxType.EXPENSE)
@@ -506,3 +523,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
+
+/** Bank statement files: CSV in its various MIME types, and PDF. */
+private val STATEMENT_TYPES = arrayOf(
+    "text/csv", "text/comma-separated-values", "text/plain", "application/csv",
+    "application/vnd.ms-excel", "application/pdf", "application/octet-stream",
+)
