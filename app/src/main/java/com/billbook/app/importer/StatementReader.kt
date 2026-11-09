@@ -13,6 +13,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.tom_roush.pdfbox.text.TextPosition
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
@@ -51,38 +52,58 @@ class StatementReader(private val context: Context) {
      * and read with OCR. [onPage] reports OCR progress.
      */
     suspend fun readPdf(file: File, fallbackCurrency: String, onPage: (Int, Int) -> Unit): StatementParseResult {
-        extractText(file)?.let { rows -> return BankPdfParser.parse(rows, fallbackCurrency) }
+        extractRows(file)?.let { rows -> return BankPdfParser.parseRows(rows, fallbackCurrency) }
         return readPdfWithOcr(file, fallbackCurrency, onPage)
     }
 
     /**
-     * Text rows of a digital PDF in reading order, or null when it holds (almost) no text, i.e. it
-     * is a scan or photo.
+     * Rows of a digital PDF with each word's position, or null when it holds (almost) no text, i.e.
+     * it is a scan or photo.
      */
-    private suspend fun extractText(file: File): List<String>? = withContext(Dispatchers.IO) {
+    private suspend fun extractRows(file: File): List<PdfRow>? = withContext(Dispatchers.IO) {
         try {
             PDFBoxResourceLoader.init(context)
             PDDocument.load(file).use { doc ->
                 val pages = minOf(doc.numberOfPages, MAX_PAGES)
-                val stripper = PDFTextStripper().apply {
+                val stripper = WordCollector().apply {
                     sortByPosition = true   // rows top to bottom, words left to right
                     startPage = 1
                     endPage = pages
                 }
-                val text = stripper.getText(doc)
+                stripper.getText(doc)
+                val chars = stripper.words.sumOf { w -> w.text.count { it.isLetterOrDigit() } }
                 // A scanned page has no text layer; a statement page has hundreds of characters.
-                if (text.count { it.isLetterOrDigit() } < MIN_TEXT_CHARS_PER_PAGE * pages) return@withContext null
-                text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                if (chars < MIN_TEXT_CHARS_PER_PAGE * pages) return@withContext null
+                PdfLayout.rows(stripper.words)
             }
         } catch (e: IOException) {
             null   // damaged or password-protected: try OCR, which fails with a clear message if needed
         }
     }
 
+    /** Collects every word with its position instead of writing plain text. */
+    private class WordCollector : PDFTextStripper() {
+        val words = mutableListOf<PdfWord>()
+
+        override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+            if (text.isBlank() || textPositions.isEmpty()) return
+            val first = textPositions.first()
+            val last = textPositions.last()
+            words += PdfWord(
+                text = text,
+                page = currentPageNo,
+                x0 = first.xDirAdj,
+                x1 = last.xDirAdj + last.widthDirAdj,
+                y = first.yDirAdj,
+                height = textPositions.maxOf { it.heightDir }.coerceAtLeast(1f),
+            )
+        }
+    }
+
     private suspend fun readPdfWithOcr(file: File, fallbackCurrency: String, onPage: (Int, Int) -> Unit): StatementParseResult {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
-            val rows = mutableListOf<String>()
+            val rows = mutableListOf<PdfRow>()
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                 PdfRenderer(fd).use { renderer ->
                     val pages = minOf(renderer.pageCount, MAX_PAGES)
@@ -95,14 +116,17 @@ class StatementReader(private val context: Context) {
                                 val b = l.boundingBox ?: Rect()
                                 OcrLine(l.text, b.left, b.top, b.right, b.bottom)
                             }
-                            rows += ReceiptParser.groupIntoRows(lines)
+                            // OCR lines keep their boxes, so column positions work for scans too.
+                            rows += ReceiptParser.groupLines(lines).map { line ->
+                                PdfRow(line.map { PdfCell(it.text, it.left.toFloat(), it.right.toFloat()) })
+                            }
                         } finally {
                             bitmap.recycle()
                         }
                     }
                 }
             }
-            return BankPdfParser.parse(rows, fallbackCurrency, source = BankPdfParser.SOURCE_OCR)
+            return BankPdfParser.parseRows(rows, fallbackCurrency, source = BankPdfParser.SOURCE_OCR)
         } finally {
             recognizer.close()
         }
