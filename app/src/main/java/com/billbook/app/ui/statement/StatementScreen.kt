@@ -17,8 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,7 +32,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +55,7 @@ import com.billbook.app.ui.components.DateField
 import com.billbook.app.ui.theme.MoneyColors
 import com.billbook.app.util.Money
 import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,28 +104,41 @@ fun StatementScreen(
         }
     }
 
+    /** The generated file being previewed; Save and Share use exactly this file. */
+    var preview by remember { mutableStateOf<Pair<File, ExportFormat>?>(null) }
+
+    fun openPreview(format: ExportFormat) = runExport(null) {
+        preview = vm.preparePreview(format) to format
+    }
+
+    fun savedMessage(format: ExportFormat) = "${format.name} statement saved"
     val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.PDF.mime)) { uri ->
-        if (uri != null) runExport("PDF statement saved") { vm.exportTo(uri, ExportFormat.PDF) }
+        val file = preview?.first
+        if (uri != null && file != null) runExport(savedMessage(ExportFormat.PDF)) { vm.saveCopy(file, uri) }
     }
     val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.CSV.mime)) { uri ->
-        if (uri != null) runExport("CSV statement saved") { vm.exportTo(uri, ExportFormat.CSV) }
+        val file = preview?.first
+        if (uri != null && file != null) runExport(savedMessage(ExportFormat.CSV)) { vm.saveCopy(file, uri) }
     }
 
-    fun share(format: ExportFormat) = runExport(null) {
-        val uri = vm.exportForShare(format)
+    fun share(file: File, format: ExportFormat) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = format.mime
-            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_STREAM, vm.shareUri(file))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "Share statement"))
+        try {
+            context.startActivity(Intent.createChooser(send, "Share statement"))
+        } catch (e: ActivityNotFoundException) {
+            scope.launch { snackbar.showSnackbar("No app available to share the file") }
+        }
     }
 
-    fun download(format: ExportFormat) {
+    fun download(file: File, format: ExportFormat) {
         try {
             when (format) {
-                ExportFormat.PDF -> savePdf.launch(vm.fileName(format))
-                ExportFormat.CSV -> saveCsv.launch(vm.fileName(format))
+                ExportFormat.PDF -> savePdf.launch(file.name)
+                ExportFormat.CSV -> saveCsv.launch(file.name)
             }
         } catch (e: ActivityNotFoundException) {
             scope.launch { snackbar.showSnackbar("No file manager available to save the file") }
@@ -233,33 +245,36 @@ fun StatementScreen(
                 }
             }
 
-            Text("Download statement", style = MaterialTheme.typography.titleSmall)
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text("Statement file", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Preview the statement, then save or share it from the preview.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (busy && preview == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { download(ExportFormat.PDF) }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Download, contentDescription = null)
+                Button(onClick = { openPreview(ExportFormat.PDF) }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Visibility, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("PDF")
+                    Text("Preview PDF")
                 }
-                OutlinedButton(onClick = { download(ExportFormat.CSV) }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Download, contentDescription = null)
+                OutlinedButton(onClick = { openPreview(ExportFormat.CSV) }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Visibility, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("CSV (Excel)")
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(onClick = { share(ExportFormat.PDF) }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Share, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Share PDF")
-                }
-                TextButton(onClick = { share(ExportFormat.CSV) }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Share, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Share CSV")
+                    Text("Preview CSV")
                 }
             }
         }
+    }
+
+    preview?.let { (file, format) ->
+        StatementPreview(
+            file = file,
+            format = format,
+            busy = busy,
+            onClose = { preview = null },
+            onDownload = { download(file, format) },
+            onShare = { share(file, format) },
+        )
     }
 }
 

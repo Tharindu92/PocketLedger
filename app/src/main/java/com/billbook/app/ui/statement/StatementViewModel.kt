@@ -103,20 +103,24 @@ class StatementViewModel(private val app: BillBookApp) : ViewModel() {
         return StatementData(r.from, r.to, currency, app.settings.businessName, items, profileName)
     }
 
-    /** Writes the statement to a location the user picked (Downloads, Drive, …). */
-    suspend fun exportTo(uri: Uri, format: ExportFormat) = withContext(Dispatchers.IO) {
-        val data = buildData()
-        val out = app.contentResolver.openOutputStream(uri) ?: throw IOException("Cannot write to the selected file")
-        out.use { StatementExporter.write(data, format, it) }
-    }
-
-    /** Writes the statement to cache and returns a shareable content:// Uri. */
-    suspend fun exportForShare(format: ExportFormat): Uri = withContext(Dispatchers.IO) {
+    /** Writes the statement to cache for previewing; Save and Share then use this same file. */
+    suspend fun preparePreview(format: ExportFormat): File = withContext(Dispatchers.IO) {
         val dir = File(app.cacheDir, "exports").apply { mkdirs() }
+        // Only the latest preview is kept.
+        dir.listFiles()?.forEach { it.delete() }
         val file = File(dir, fileName(format))
         val data = buildData()
         file.outputStream().use { StatementExporter.write(data, format, it) }
-        FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+        file
+    }
+
+    /** A content:// Uri other apps can read, for sharing a previewed file. */
+    fun shareUri(file: File): Uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+
+    /** Copies a previewed file to a location the user picked (Downloads, Drive, …). */
+    suspend fun saveCopy(file: File, uri: Uri) = withContext(Dispatchers.IO) {
+        val out = app.contentResolver.openOutputStream(uri) ?: throw IOException("Cannot write to the selected file")
+        out.use { stream -> file.inputStream().use { it.copyTo(stream) } }
     }
 
     companion object {
