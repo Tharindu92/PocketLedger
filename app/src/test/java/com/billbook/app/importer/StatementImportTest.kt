@@ -132,6 +132,58 @@ class StatementImportTest {
         assertTrue(r.lines[2].uncertain)
     }
 
+    /** Layout of an American Express (Germany) PDF statement, personal details replaced. */
+    @Test
+    fun amexCardStatementPdf() {
+        val rows = listOf(
+            "PAYBACK American Express Karte americanexpress.de",
+            "Monatsabrechnung",
+            "Angefertigt für Ihre Karten-Nr. Datum",
+            "MAX MUSTERMANN xxxx-xxxxxx-00000 08.10.26",
+            "Saldo der letzten Gutschriften Neue Belastungen Neuer Saldo Zu zahlender",
+            "Abrechnung in EUR in EUR in EUR in EUR Betrag in EUR",
+            "0,00 0,00 1.769,19 1.769,19 1.769,19",
+            "Abrechnungszeitraum vom 09.09.26 bis 08.10.26",
+            "Umsatz vom Buchungsdatum Details Betrag in Fremdwährung Betrag EUR",
+            "18.09 19.09 KAUFLAND B. REINICKEND BERLIN 2,49",
+            "19.09 19.09 BER-HALLEN AM BORSIGTU BERLIN 35,90",
+            "PBPAY004052420b6b8644859d472",
+            "27.09 28.09 JET TANKSTELLE XJ05508 BERLIN 73,45",
+            "1210 Vielen Dank fuer Ihre Tankung",
+            "29.09 29.09 SEILBAHN ZUGSPITZE GARMISCH-PARTEN USD 52,00 46,10",
+            "30.09 30.09 ZAHLUNG ERHALTEN. VIELEN DANK -500,00",
+            "02.10 02.10 KAUFLAND B. REINICKEND BERLIN -12,00",
+            "05.10 05.10 TURKISH AIRLINES TURKIS UNITED KINGDOM 801,77",
+            "Saldo des laufenden Monats für MAX MUSTERMANN 1.769,19",
+        )
+        val r = BankPdfParser.parse(rows, "LKR", today = LocalDate.of(2026, 11, 9))
+
+        assertEquals("EUR", r.currency)
+        assertEquals(listOf(-249L, -3590L, -7345L, -4610L, 1200L, -80177L), r.lines.map { it.amountCents })
+        val first = r.lines.first()
+        assertEquals(LocalDate.of(2026, 9, 18), first.date)          // purchase day, year from the statement
+        assertEquals("KAUFLAND B. REINICKEND BERLIN", first.party)
+        assertFalse(r.lines.any { it.uncertain })                   // card statements have clear signs
+        val foreign = r.lines[3]
+        assertEquals(5200L, foreign.originalAmountCents)
+        assertEquals("USD", foreign.originalCurrency)
+        assertEquals("SEILBAHN ZUGSPITZE GARMISCH-PARTEN", foreign.party)
+    }
+
+    @Test
+    fun shortDatesTakeThePreviousYearAcrossNewYear() {
+        val rows = listOf("Ihre Karten-Nr. xxxx Datum 08.01.27", "28.12 29.12 GIFT SHOP BERLIN 20,00")
+        val line = BankPdfParser.parse(rows, "EUR", today = LocalDate.of(2027, 1, 20)).lines.single()
+        assertEquals(LocalDate.of(2026, 12, 28), line.date)
+    }
+
+    @Test
+    fun bankStatementPayingTheCardIsNotACardStatement() {
+        val rows = listOf("Kontoauszug", "05.10.2026 American Express Europe S.A. -1.769,19 €")
+        val line = BankPdfParser.parse(rows, "EUR", today = LocalDate.of(2026, 11, 9)).lines.single()
+        assertEquals(-176919L, line.amountCents)
+    }
+
     /** Text rows of a summary box: labels on one line, their values on the next. */
     @Test
     fun pdfSummaryBoxesAreNotBookings() {
