@@ -18,8 +18,8 @@ class BankNotificationParserTest {
 
     @Test
     fun n26RealNotification() {
-        val a = parse("N26", "You received €2 from Patabendi Maddumage Tharindu de Silva.", home = "LKR", expenses = true)
-        assertEquals(BankAlert(TxType.INCOME, 200, "EUR", "Patabendi Maddumage Tharindu de Silva"), a)
+        val a = parse("N26", "You received €2 from Anna Maria Beispiel de Souza.", home = "LKR", expenses = true)
+        assertEquals(BankAlert(TxType.INCOME, 200, "EUR", "Anna Maria Beispiel de Souza"), a)
     }
 
     @Test
