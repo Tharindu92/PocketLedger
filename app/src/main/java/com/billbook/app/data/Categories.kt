@@ -25,6 +25,7 @@ object Categories {
         "Services / Fees",
         "Salary",
         "Interest",
+        "Dividends",
         "Rent received",
         "Refunds",
         "Other income",
