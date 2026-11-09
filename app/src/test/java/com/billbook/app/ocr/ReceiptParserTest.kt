@@ -3,6 +3,7 @@ package com.billbook.app.ocr
 import com.billbook.app.util.Money
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
@@ -201,6 +202,30 @@ class ReceiptParserTest {
         assertEquals("Cash", r.paymentMethod)
         assertEquals("LKR", r.currency)
         assertEquals("Government & Fees", r.category)
+        // The other numbers on the form are offered as one-tap alternatives, receipt no. first.
+        assertEquals("12600000123", r.billNumberOptions.first())
+        assertTrue(r.billNumberOptions.any { it.startsWith("26HINO") })      // DRP Ref. No.
+        assertTrue(r.billNumberOptions.any { it.startsWith("DRPENIdA") })    // App. No.
+        assertEquals(250000L, r.totalOptions.first())
+        assertEquals(expectedMerchant, r.merchantOptions.first())
+    }
+
+    @Test
+    fun wordFragmentsAreNotBillNumbers() {
+        assertNull(ReceiptParser.parseText("Shop\nReceipt No: 0des", today).billNumber)
+        assertEquals("A-104", ReceiptParser.parseText("Shop\nBill No: A-104", today).billNumber)
+    }
+
+    @Test
+    fun optionsListRunnerUpValues() {
+        val r = ReceiptParser.parseText(
+            "Cafe Mocha\nDate: 03/11/2026\nPrinted 01/11/2026\nSub Total 900.00\nTOTAL 1,000.00\nCASH 2,000.00",
+            today,
+        )
+        assertEquals(LocalDate.of(2026, 11, 3), r.date)
+        assertEquals(listOf(LocalDate.of(2026, 11, 3), LocalDate.of(2026, 11, 1)), r.dateOptions)
+        assertEquals(100000L, r.totalCents)
+        assertEquals(listOf(100000L, 90000L), r.totalOptions)   // cash tendered is never offered
     }
 
     @Test

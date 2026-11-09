@@ -1,8 +1,12 @@
 package com.billbook.app.ui.home
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -85,6 +89,9 @@ import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.theme.MoneyColors
 import com.billbook.app.util.ImageFiles
 import com.billbook.app.util.Money
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -143,6 +150,41 @@ fun HomeScreen(
 
     fun pickFromGallery() =
         pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+
+    // Google's document scanner crops the bill out of its background (table, newspaper…) and
+    // straightens it, which makes the text far easier to read than a plain photo.
+    val documentScanner = remember {
+        GmsDocumentScanning.getClient(
+            GmsDocumentScannerOptions.Builder()
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                .setGalleryImportAllowed(true)
+                .setPageLimit(1)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+                .build()
+        )
+    }
+    val scanDocument = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val uri = GmsDocumentScanningResult.fromActivityResultIntent(result.data)?.pages?.firstOrNull()?.imageUri
+            ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val path = withContext(Dispatchers.IO) { ImageFiles.importFromUri(context, uri) }
+            if (path != null) onBillImage(path)
+            else Toast.makeText(context, "Could not open the scan", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Document scanner when available (needs Google Play services), plain camera photo otherwise. */
+    fun scanBill() {
+        val activity = context.findActivity()
+        if (activity == null) {
+            scanWithCamera()
+            return
+        }
+        documentScanner.getStartScanIntent(activity)
+            .addOnSuccessListener { sender -> scanDocument.launch(IntentSenderRequest.Builder(sender).build()) }
+            .addOnFailureListener { scanWithCamera() }
+    }
 
     Scaffold(
         topBar = {
@@ -239,7 +281,7 @@ fun HomeScreen(
             item { SummaryCard(state, settings.currency) }
             item { FilterRow(state.filter, vm::setFilter) }
             if (state.items.isEmpty()) {
-                item { EmptyState(onScan = ::scanWithCamera, onManual = { onAdd(TxType.EXPENSE) }) }
+                item { EmptyState(onScan = ::scanBill, onManual = { onAdd(TxType.EXPENSE) }) }
             }
             items(state.items, key = { it.id }) { t ->
                 TransactionRow(t, t.currency.ifBlank { settings.currency }) { onOpen(t.id) }
@@ -250,8 +292,8 @@ fun HomeScreen(
 
     if (showSheet) {
         ModalBottomSheet(onDismissRequest = { showSheet = false }) {
-            SheetOption(Icons.Default.CameraAlt, "Scan a bill", "Take a photo — amount, date and bill no. are read automatically") {
-                showSheet = false; scanWithCamera()
+            SheetOption(Icons.Default.CameraAlt, "Scan a bill", "Crops the bill out of the background — amount, date and bill no. are read automatically") {
+                showSheet = false; scanBill()
             }
             SheetOption(Icons.Default.PhotoLibrary, "Upload a bill photo", "Pick an existing photo from the gallery") {
                 showSheet = false; pickFromGallery()
@@ -440,4 +482,10 @@ private fun SettingsDialog(settings: AppSettings, onDismiss: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

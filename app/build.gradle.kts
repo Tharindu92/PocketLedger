@@ -67,6 +67,9 @@ dependencies {
     // On-device OCR (bundled model, works offline)
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    // Document scanner (Google Play services, on-device): finds the paper edges, crops away the
+    // background and straightens the photo before OCR
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
 
     testImplementation("junit:junit:4.13.2")
 }

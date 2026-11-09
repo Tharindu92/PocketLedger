@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,6 +60,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -66,6 +70,7 @@ import com.billbook.app.BillBookApp
 import com.billbook.app.data.Categories
 import com.billbook.app.data.TxType
 import com.billbook.app.ui.components.DateField
+import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.components.SuggestField
 import com.billbook.app.util.ImageFiles
 import kotlinx.coroutines.Dispatchers
@@ -179,6 +184,8 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                     modifier = Modifier.width(132.dp),
                 )
             }
+            val hints = vm.suggestions
+            OtherMatches(hints.amounts, form.amount, { it }) { v -> vm.update { it.copy(amount = v) } }
 
             DateField(
                 label = if (income) "Date received" else "Bill date",
@@ -186,6 +193,7 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 onDateChange = vm::setDate,
                 modifier = Modifier.fillMaxWidth(),
             )
+            OtherMatches(hints.dates, form.date, { it.format(DisplayDate) }, vm::setDate)
 
             OutlinedTextField(
                 value = form.party,
@@ -195,6 +203,7 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 modifier = Modifier.fillMaxWidth(),
             )
+            OtherMatches(hints.parties, form.party, { it }) { v -> vm.update { it.copy(party = v) } }
 
             OutlinedTextField(
                 value = form.billNumber,
@@ -203,6 +212,7 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            OtherMatches(hints.billNumbers, form.billNumber, { it }) { v -> vm.update { it.copy(billNumber = v) } }
 
             SuggestField(
                 label = "Category",
@@ -269,6 +279,38 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
 
     if (showImage) {
         form.imagePath?.let { FullScreenImage(it) { showImage = false } }
+    }
+}
+
+/**
+ * Other values the scan found for a field, one tap to use instead. Hidden when there is nothing
+ * besides the value already in the field.
+ */
+@Composable
+private fun <T> OtherMatches(options: List<T>, current: T, label: (T) -> String, onPick: (T) -> Unit) {
+    val others = options.filter { it != current }
+    if (others.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(y = (-8).dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Also found:",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        others.forEach { option ->
+            SuggestionChip(
+                onClick = { onPick(option) },
+                label = { Text(label(option), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                modifier = Modifier.widthIn(max = 260.dp),
+            )
+        }
     }
 }
 

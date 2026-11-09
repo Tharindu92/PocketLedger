@@ -59,6 +59,14 @@ data class FormState(
     }
 }
 
+/** Other values the scan found for a field, offered as one-tap alternatives (best first). */
+data class ScanSuggestions(
+    val amounts: List<String> = emptyList(),
+    val dates: List<LocalDate> = emptyList(),
+    val parties: List<String> = emptyList(),
+    val billNumbers: List<String> = emptyList(),
+)
+
 class EditViewModel(
     private val app: BillBookApp,
     private val id: Long,
@@ -87,6 +95,8 @@ class EditViewModel(
     var scanning by mutableStateOf(false)
         private set
     var scanMessage by mutableStateOf<String?>(null)
+        private set
+    var suggestions by mutableStateOf(ScanSuggestions())
         private set
     var amountError by mutableStateOf<String?>(null)
         private set
@@ -177,6 +187,12 @@ class EditViewModel(
             date = if (p.date != null && (overwrite || !dateTouched)) p.date else f.date,
             currency = if (p.currency != null && (overwrite || !currencyTouched)) p.currency else f.currency,
             ocrText = result.text,
+        )
+        suggestions = ScanSuggestions(
+            amounts = p.totalOptions.map(Money::toInput),
+            dates = p.dateOptions,
+            parties = p.merchantOptions,
+            billNumbers = p.billNumberOptions,
         )
 
         val found = listOfNotNull(

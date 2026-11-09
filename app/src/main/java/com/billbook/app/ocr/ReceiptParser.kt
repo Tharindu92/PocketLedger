@@ -20,6 +20,12 @@ data class ParsedReceipt(
     val category: String? = null,
     /** ISO 4217 code such as "LKR" or "USD". */
     val currency: String? = null,
+    // Every plausible value found, best first (the first one is the field above). Shown as
+    // one-tap alternatives because heuristics cannot always tell which one is right.
+    val totalOptions: List<Long> = emptyList(),
+    val billNumberOptions: List<String> = emptyList(),
+    val merchantOptions: List<String> = emptyList(),
+    val dateOptions: List<LocalDate> = emptyList(),
 )
 
 /**
@@ -43,18 +49,27 @@ object ReceiptParser {
     ): ParsedReceipt {
         val rowLines = groupLines(lines)
         val rows = rowLines.map(::joinRow)
-        val total = findTotal(rows)
+        val totals = totalCandidates(rows)
+        val billNumbers = billNumberCandidates(rowLines)
+        val merchants = merchantCandidates(rowLines)
+        val dates = dateCandidates(rows, today)
         return ParsedReceipt(
-            totalCents = total,
-            taxCents = findTax(rows, total),
-            billNumber = findBillNumber(rowLines),
-            merchant = findMerchant(rowLines),
-            date = findDate(rows, today),
+            totalCents = totals.firstOrNull(),
+            taxCents = findTax(rows, totals.firstOrNull()),
+            billNumber = billNumbers.firstOrNull(),
+            merchant = merchants.firstOrNull(),
+            date = dates.firstOrNull(),
             paymentMethod = findPaymentMethod(rows),
             category = guessCategory(rows),
             currency = detectCurrency(rows, homeCurrency),
+            totalOptions = totals.take(MAX_OPTIONS),
+            billNumberOptions = billNumbers.take(MAX_OPTIONS),
+            merchantOptions = merchants.take(MAX_OPTIONS),
+            dateOptions = dates.take(MAX_OPTIONS),
         )
     }
+
+    private const val MAX_OPTIONS = 4
 
     /** Convenience for plain text where every line is already its own row. */
     fun parseText(text: String, today: LocalDate = LocalDate.now(), homeCurrency: String = "LKR"): ParsedReceipt =
@@ -168,9 +183,12 @@ object ReceiptParser {
     )
     private val FALLBACK_EXCLUDE = listOf("cash", "change", "tender", "paid", "balance", "tel", "phone")
 
-    internal fun findTotal(rows: List<String>): Long? {
-        var bestRank = Int.MAX_VALUE
-        var best: Long? = null
+    internal fun findTotal(rows: List<String>): Long? = totalCandidates(rows).firstOrNull()
+
+    /** Labelled totals first (most specific label, then the larger amount), then other large amounts. */
+    internal fun totalCandidates(rows: List<String>): List<Long> {
+        data class Candidate(val rank: Int, val amount: Long)
+        val labelled = mutableListOf<Candidate>()
         rows.forEachIndexed { i, row ->
             val lower = row.lowercase()
             if (TOTAL_EXCLUDE.any { lower.contains(it) }) return@forEachIndexed
@@ -184,20 +202,16 @@ object ReceiptParser {
                     ?.takeIf { next -> CURRENCY_TOKENS.replace(next, "").none { it.isLetter() } }
                     ?.let { amountsIn(it).lastOrNull() }
 
-            if (amount != null && amount > 0 &&
-                (rank < bestRank || (rank == bestRank && amount > (best ?: 0)))
-            ) {
-                bestRank = rank
-                best = amount
-            }
+            if (amount != null && amount > 0) labelled += Candidate(rank, amount)
         }
-        if (best != null) return best
-
-        // No "total" label recognised: use the largest amount, ignoring cash/change lines.
-        return rows
+        // Without a recognised "total" label, the largest amount (ignoring cash/change lines) is
+        // the best guess; with one, the other large amounts are still offered as alternatives.
+        val others = rows
             .filterNot { row -> row.lowercase().let { l -> FALLBACK_EXCLUDE.any { l.contains(it) } } }
             .flatMap { amountsIn(it) }
-            .maxOrNull()
+            .filter { it > 0 }
+            .sortedDescending()
+        return (labelled.sortedWith(compareBy({ it.rank }, { -it.amount })).map { it.amount } + others).distinct()
     }
 
     // ----------------------------------------------------------------- tax
@@ -216,7 +230,8 @@ object ReceiptParser {
 
     // ---------------------------------------------------------- bill number
 
-    private const val BILL_WORDS = "invoice|inv|bill|receipt|rcpt|ref|order|txn|trans|transaction|voucher|doc"
+    private const val BILL_WORDS =
+        "invoice|inv|bill|receipt|rcpt|ref|order|txn|trans|transaction|voucher|doc|app|application"
     private const val NUMBER_WORDS = "no|num|number|nbr|id|#"
     private val BILL_NO = Regex(
         """\b($BILL_WORDS)\b\.?\s*(?:$NUMBER_WORDS)?\.?\s*[:#\-]?\s*#?\s*([A-Za-z0-9][A-Za-z0-9\-/]{2,24})""",
@@ -235,13 +250,17 @@ object ReceiptParser {
     private fun billRank(word: String) = when (word.lowercase()) {
         "invoice", "inv", "bill", "receipt", "rcpt" -> 0
         "ref" -> 2
+        "app", "application" -> 3
         else -> 1
     }
 
+    /** At least three digits, so OCR fragments of words ("0des") are not taken for numbers. */
     private fun isBillValue(value: String) =
-        value.any { it.isDigit() } && !LOOKS_LIKE_DATE.matches(value) && amountsIn(value).isEmpty()
+        value.count { it.isDigit() } >= 3 && !LOOKS_LIKE_DATE.matches(value) && amountsIn(value).isEmpty()
 
-    internal fun findBillNumber(rows: List<List<OcrLine>>): String? {
+    internal fun findBillNumber(rows: List<List<OcrLine>>): String? = billNumberCandidates(rows).firstOrNull()
+
+    internal fun billNumberCandidates(rows: List<List<OcrLine>>): List<String> {
         data class Candidate(val rank: Int, val row: Int, val value: String)
         val candidates = mutableListOf<Candidate>()
 
@@ -272,7 +291,7 @@ object ReceiptParser {
                 }
             }
         }
-        return candidates.minWithOrNull(compareBy({ it.rank }, { it.row }))?.value
+        return candidates.sortedWith(compareBy({ it.rank }, { it.row })).map { it.value }.distinct()
     }
 
     // ------------------------------------------------------------- merchant
@@ -308,9 +327,11 @@ object ReceiptParser {
      * Each OCR line is judged on its own rather than the whole visual row, so a speck of background
      * text that happens to sit level with the name ("devel  DEPARTMENT FOR …") is not glued onto it.
      */
-    internal fun findMerchant(rows: List<List<OcrLine>>): String? {
-        var best: String? = null
-        var bestScore = Int.MIN_VALUE
+    internal fun findMerchant(rows: List<List<OcrLine>>): String? = merchantCandidates(rows).firstOrNull()
+
+    /** Business-name candidates scoring 0 or more, best first (earlier line wins a tie). */
+    internal fun merchantCandidates(rows: List<List<OcrLine>>): List<String> {
+        val scored = mutableListOf<Pair<Int, String>>()
         var candidateIndex = 0
         var afterTitle = false
 
@@ -340,14 +361,11 @@ object ReceiptParser {
                 if (raw.trimEnd().endsWith('-')) score -= 2        // hyphenated word, i.e. printed paragraph
                 if (words.size > 8) score -= 2
                 candidateIndex++
-
-                if (score > bestScore) {
-                    bestScore = score
-                    best = text.take(60)
-                }
+                if (score >= 0) scored += score to text.take(60)
             }
         }
-        return best.takeIf { bestScore >= 0 }
+        // sortedByDescending is stable, so equal scores keep their top-to-bottom order.
+        return scored.sortedByDescending { it.first }.map { it.second }.distinct()
     }
 
     // ----------------------------------------------------------------- date
@@ -371,45 +389,43 @@ object ReceiptParser {
     /** A time glued to the date, e.g. "2026/10/2809:05". */
     private val TIME_STUCK_TO_DATE = Regex("""(\d)(\d{1,2}:\d{2})""")
 
-    internal fun findDate(rows: List<String>, today: LocalDate): LocalDate? {
+    internal fun findDate(rows: List<String>, today: LocalDate): LocalDate? = dateCandidates(rows, today).firstOrNull()
+
+    internal fun dateCandidates(rows: List<String>, today: LocalDate): List<LocalDate> {
         val cleaned = rows.map { TIME_STUCK_TO_DATE.replace(it, "$1 $2") }
         // Rows that say "date" (and the row under them, where two-column forms put the value) are
-        // the most reliable, then everything else.
+        // the most reliable, then everything else; clean formats before OCR-damaged ones.
         val nearLabel = cleaned.indices.filter { cleaned[it].contains("date", ignoreCase = true) }
             .flatMap { listOfNotNull(cleaned[it], cleaned.getOrNull(it + 1)) }
         val ordered = nearLabel + cleaned
-        for (row in ordered) dateIn(row, today)?.let { return it }
+        val found = mutableListOf<LocalDate>()
+        for (row in ordered) found += datesIn(row, today)
         for (row in ordered) {
-            DATE_YMD_LOOSE.findAll(row).forEach { m ->
-                validDate(m.int(1), m.int(2), m.int(3), today)?.let { return it }
-            }
+            DATE_YMD_LOOSE.findAll(row).forEach { m -> validDate(m.int(1), m.int(2), m.int(3), today)?.let(found::add) }
         }
         for (row in nearLabel) {
-            DATE_YMD_COMPACT.findAll(row).forEach { m ->
-                validDate(m.int(1), m.int(2), m.int(3), today)?.let { return it }
-            }
+            DATE_YMD_COMPACT.findAll(row).forEach { m -> validDate(m.int(1), m.int(2), m.int(3), today)?.let(found::add) }
         }
-        return null
+        return found.distinct()
     }
 
-    private fun dateIn(row: String, today: LocalDate): LocalDate? {
-        DATE_YMD.findAll(row).forEach { m ->
-            validDate(m.int(1), m.int(2), m.int(3), today)?.let { return it }
-        }
+    private fun datesIn(row: String, today: LocalDate): List<LocalDate> {
+        val found = mutableListOf<LocalDate>()
+        DATE_YMD.findAll(row).forEach { m -> validDate(m.int(1), m.int(2), m.int(3), today)?.let(found::add) }
         DATE_D_MON_Y.findAll(row).forEach { m ->
-            validDate(year(m.groupValues[3]), month(m.groupValues[2]), m.int(1), today)?.let { return it }
+            validDate(year(m.groupValues[3]), month(m.groupValues[2]), m.int(1), today)?.let(found::add)
         }
         DATE_MON_D_Y.findAll(row).forEach { m ->
-            validDate(m.int(3), month(m.groupValues[1]), m.int(2), today)?.let { return it }
+            validDate(m.int(3), month(m.groupValues[1]), m.int(2), today)?.let(found::add)
         }
         DATE_DMY.findAll(row).forEach { m ->
             val a = m.int(1)
             val b = m.int(2)
             val y = year(m.groupValues[3])
             // Day-first (dd/mm/yyyy) is assumed; fall back to month-first when that is invalid.
-            (validDate(y, b, a, today) ?: validDate(y, a, b, today))?.let { return it }
+            (validDate(y, b, a, today) ?: validDate(y, a, b, today))?.let(found::add)
         }
-        return null
+        return found
     }
 
     private fun MatchResult.int(group: Int) = groupValues[group].toInt()
