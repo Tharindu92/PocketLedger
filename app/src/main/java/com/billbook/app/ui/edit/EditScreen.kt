@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
@@ -193,7 +194,7 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 onDateChange = vm::setDate,
                 modifier = Modifier.fillMaxWidth(),
             )
-            OtherMatches(hints.dates, form.date, { it.format(DisplayDate) }, vm::setDate)
+            OtherMatches(hints.dates, form.date, { it.format(DisplayDate) }, onPick = vm::setDate)
 
             OutlinedTextField(
                 value = form.party,
@@ -203,7 +204,11 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 modifier = Modifier.fillMaxWidth(),
             )
-            OtherMatches(hints.parties, form.party, { it }) { v -> vm.update { it.copy(party = v) } }
+            OtherMatches(
+                hints.parties, form.party, { it },
+                // "+" adds a piece to what is already there, for names the scan returned in parts.
+                onAppend = if (form.party.isNotBlank()) vm::appendParty else null,
+            ) { v -> vm.update { it.copy(party = v) } }
 
             OutlinedTextField(
                 value = form.billNumber,
@@ -284,10 +289,17 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
 
 /**
  * Other values the scan found for a field, one tap to use instead. Hidden when there is nothing
- * besides the value already in the field.
+ * besides the value already in the field. With [onAppend], each chip also gets a "+" that adds
+ * its text to the field instead of replacing it.
  */
 @Composable
-private fun <T> OtherMatches(options: List<T>, current: T, label: (T) -> String, onPick: (T) -> Unit) {
+private fun <T> OtherMatches(
+    options: List<T>,
+    current: T,
+    label: (T) -> String,
+    onAppend: ((T) -> Unit)? = null,
+    onPick: (T) -> Unit,
+) {
     val others = options.filter { it != current }
     if (others.isEmpty()) return
     Row(
@@ -310,6 +322,11 @@ private fun <T> OtherMatches(options: List<T>, current: T, label: (T) -> String,
                 label = { Text(label(option), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 modifier = Modifier.widthIn(max = 260.dp),
             )
+            if (onAppend != null) {
+                IconButton(onClick = { onAppend(option) }, modifier = Modifier.size(32.dp).offset(x = (-4).dp)) {
+                    Icon(Icons.Default.AddCircleOutline, contentDescription = "Add \"${label(option)}\" to the name")
+                }
+            }
         }
     }
 }

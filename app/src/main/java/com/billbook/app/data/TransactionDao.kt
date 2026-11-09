@@ -27,6 +27,13 @@ interface TransactionDao {
     @Query("SELECT DISTINCT type, category FROM transactions WHERE category != '' ORDER BY category")
     fun observeUsedCategories(): Flow<List<TypeCategory>>
 
+    /** Business / payer names used before, most recent first, for recognising them in scans. */
+    @Query(
+        "SELECT party FROM transactions WHERE party != '' GROUP BY party " +
+            "ORDER BY MAX(createdAt) DESC LIMIT 500"
+    )
+    suspend fun knownParties(): List<String>
+
     @Upsert
     suspend fun upsert(transaction: Transaction): Long
 

@@ -298,7 +298,7 @@ object ReceiptParser {
 
     private val MERCHANT_SKIP = Regex(
         """\b(receipt|invoice|tax|vat|gst|tel|phone|fax|mobile|hotline|date|time|cashier|counter|""" +
-            """terminal|pos|thank|thanks|bill|order|table|www|http|email|reg|no|total|subtotal|sum|summe|""" +
+            """terminal|pos|thank|thanks|bill|order|table|www|http|email|no|total|subtotal|sum|summe|""" +
             """amount|balance|cash|change|qty|description|item|items|quittung|beleg|kassenbon|""" +
             """steuer|mwst|ust|kasse|tisch|kellner)\b|rechnung\b|@|\.com|\.lk""",
         RegexOption.IGNORE_CASE,
@@ -329,9 +329,14 @@ object ReceiptParser {
      */
     internal fun findMerchant(rows: List<List<OcrLine>>): String? = merchantCandidates(rows).firstOrNull()
 
-    /** Business-name candidates scoring 0 or more, best first (earlier line wins a tie). */
+    /**
+     * Business-name candidates scoring 0 or more, best first (earlier line wins a tie). Right after
+     * the best one come names rebuilt from two neighbouring pieces, because OCR sometimes splits a
+     * long name ("Department of Reg" + "Registration of Persons").
+     */
     internal fun merchantCandidates(rows: List<List<OcrLine>>): List<String> {
         val scored = mutableListOf<Pair<Int, String>>()
+        val pieces = mutableListOf<Pair<OcrLine, String>>()
         var candidateIndex = 0
         var afterTitle = false
 
@@ -361,11 +366,58 @@ object ReceiptParser {
                 if (raw.trimEnd().endsWith('-')) score -= 2        // hyphenated word, i.e. printed paragraph
                 if (words.size > 8) score -= 2
                 candidateIndex++
-                if (score >= 0) scored += score to text.take(60)
+                if (score >= 0) {
+                    scored += score to text.take(60)
+                    pieces += line to text
+                }
             }
         }
         // sortedByDescending is stable, so equal scores keep their top-to-bottom order.
-        return scored.sortedByDescending { it.first }.map { it.second }.distinct()
+        val ranked = scored.sortedByDescending { it.first }.map { it.second }.distinct()
+        val joined = pieces.flatMapIndexed { i, (a, textA) ->
+            pieces.drop(i + 1).filter { (b, _) -> areNeighbours(a, b) }
+                .map { (_, textB) -> joinPieces(textA, textB) }
+        }.filter { it.length <= 60 }
+        return (ranked.take(1) + joined + ranked.drop(1)).distinct()
+    }
+
+    /**
+     * Two pieces of one name: same letter size, and either side by side on a line or one directly
+     * under the other (a name wrapped onto two lines).
+     */
+    private fun areNeighbours(a: OcrLine, b: OcrLine): Boolean {
+        // Addresses and branch numbers ("Pizza Hut # 127" / "Lerchenauer Strasse 42") are not
+        // parts of a name.
+        if (a.text.any { it.isDigit() } || b.text.any { it.isDigit() }) return false
+        val h = maxOf(a.height, b.height).toDouble()
+        if (minOf(a.height, b.height) < h * 0.7) return false
+        val sideBySide = abs(a.centerY - b.centerY) < h * 0.6 &&
+            minOf(abs(b.left - a.right), abs(a.left - b.right)) < h * 2
+        val stacked = b.top - a.bottom in (-h * 0.3).toInt()..h.toInt() &&
+            minOf(a.right, b.right) > maxOf(a.left, b.left)
+        return sideBySide || stacked
+    }
+
+    /**
+     * Joins two pieces of text, dropping the words they repeat: "Department of Reg" +
+     * "Registration of Persons" gives "Department of Registration of Persons". The last word of
+     * the first piece may be cut off ("Reg" of "Registration").
+     */
+    fun joinPieces(first: String, second: String): String {
+        val a = first.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val b = second.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (a.isEmpty()) return b.joinToString(" ")
+        if (b.isEmpty()) return a.joinToString(" ")
+        for (k in minOf(a.size, b.size) downTo 1) {
+            val tail = a.takeLast(k)
+            val head = b.take(k)
+            val fullWords = (0 until k - 1).all { tail[it].equals(head[it], ignoreCase = true) }
+            val cut = tail[k - 1]
+            val lastWord = cut.equals(head[k - 1], ignoreCase = true) ||
+                (cut.length >= 3 && head[k - 1].startsWith(cut, ignoreCase = true))
+            if (fullWords && lastWord) return (a.dropLast(k) + b).joinToString(" ")
+        }
+        return (a + b).joinToString(" ")
     }
 
     // ----------------------------------------------------------------- date

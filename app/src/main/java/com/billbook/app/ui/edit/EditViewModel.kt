@@ -14,6 +14,8 @@ import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
 import com.billbook.app.data.TypeCategory
 import com.billbook.app.data.date
+import com.billbook.app.ocr.KnownNames
+import com.billbook.app.ocr.ReceiptParser
 import com.billbook.app.ocr.ReceiptScanner
 import com.billbook.app.util.Money
 import kotlinx.coroutines.Dispatchers
@@ -142,6 +144,9 @@ class EditViewModel(
         taxError = null
     }
 
+    /** Adds a piece of a name to the business field, dropping words the two share. */
+    fun appendParty(piece: String) = update { it.copy(party = ReceiptParser.joinPieces(it.party, piece)) }
+
     fun setDate(date: LocalDate) {
         dateTouched = true
         update { it.copy(date = date) }
@@ -162,7 +167,8 @@ class EditViewModel(
         scanMessage = "Reading bill…"
         viewModelScope.launch {
             try {
-                applyScan(scanner.scan(path, app.settings.currency), overwrite)
+                val result = scanner.scan(path, app.settings.currency)
+                applyScan(result, overwrite, known = dao.knownParties())
             } catch (e: Exception) {
                 scanMessage = "Couldn't read the photo (${e.message ?: "unknown error"}). Please enter details manually."
             } finally {
@@ -171,8 +177,12 @@ class EditViewModel(
         }
     }
 
-    private fun applyScan(result: ReceiptScanner.Result, overwrite: Boolean) {
+    private fun applyScan(result: ReceiptScanner.Result, overwrite: Boolean, known: List<String>) {
         val p = result.parsed
+        // A business saved before wins when the scan resembles it: the user's own spelling is
+        // right even where OCR misread a word or split the name.
+        val knownMatch = KnownNames.bestMatch(p.merchantOptions, known)
+        val merchant = knownMatch ?: p.merchant
         fun pick(current: String, found: String?) =
             if (found != null && (overwrite || current.isBlank())) found else current
 
@@ -180,7 +190,7 @@ class EditViewModel(
         form = f.copy(
             amount = pick(f.amount, p.totalCents?.let(Money::toInput)),
             tax = pick(f.tax, p.taxCents?.let(Money::toInput)),
-            party = pick(f.party, p.merchant),
+            party = pick(f.party, merchant),
             billNumber = pick(f.billNumber, p.billNumber),
             category = pick(f.category, p.category),
             paymentMethod = pick(f.paymentMethod, p.paymentMethod),
@@ -191,7 +201,7 @@ class EditViewModel(
         suggestions = ScanSuggestions(
             amounts = p.totalOptions.map(Money::toInput),
             dates = p.dateOptions,
-            parties = p.merchantOptions,
+            parties = (listOfNotNull(knownMatch) + p.merchantOptions).distinctBy(KnownNames::normalize),
             billNumbers = p.billNumberOptions,
         )
 
@@ -199,7 +209,7 @@ class EditViewModel(
             p.totalCents?.let { "amount" },
             p.currency?.let { "currency ($it)" },
             p.date?.let { "date" },
-            p.merchant?.let { "business" },
+            merchant?.let { "business" },
             p.billNumber?.let { "bill no." },
             p.taxCents?.let { "tax" },
             p.paymentMethod?.let { "payment method" },

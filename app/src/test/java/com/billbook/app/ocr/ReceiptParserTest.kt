@@ -211,6 +211,46 @@ class ReceiptParserTest {
     }
 
     @Test
+    fun joinPiecesDropsRepeatedWords() {
+        assertEquals(
+            "Department of Registration of Persons",
+            ReceiptParser.joinPieces("Department of Reg", "Registration of Persons"),
+        )
+        assertEquals("Department for Registration", ReceiptParser.joinPieces("Department for", "Registration"))
+        assertEquals("Blue Moon Cafe", ReceiptParser.joinPieces("Blue Moon", "Moon Cafe"))
+        // A one- or two-letter tail is not treated as a cut-off word.
+        assertEquals("SHOP A Avenue Road", ReceiptParser.joinPieces("SHOP A", "Avenue Road"))
+        assertEquals("Persons", ReceiptParser.joinPieces("", "Persons"))
+    }
+
+    /** OCR split the name in two pieces on one line; the joined name is offered right after the best. */
+    @Test
+    fun splitBusinessNameIsOfferedJoined() {
+        val lines = listOf(
+            OcrLine("Receipt", 100, 40, 260, 80),
+            OcrLine("DEPARTMENT OF REG", 100, 100, 560, 150),
+            OcrLine("REGISTRATION OF PERSONS", 600, 102, 1200, 152),
+            OcrLine("TOTAL 2,500.00", 100, 400, 700, 450),
+        )
+        val r = ReceiptParser.parse(lines, today)
+        assertEquals("DEPARTMENT OF REGISTRATION OF PERSONS", r.merchantOptions[1])
+        assertTrue(r.merchantOptions.containsAll(listOf("DEPARTMENT OF REG", "REGISTRATION OF PERSONS")))
+    }
+
+    /** A name wrapped onto two lines of the same size is joined; an address under it is not. */
+    @Test
+    fun wrappedBusinessNameIsOfferedJoined() {
+        val lines = listOf(
+            OcrLine("LANKA TECH", 300, 100, 700, 150),
+            OcrLine("SOLUTIONS PVT LTD", 250, 158, 760, 208),
+            OcrLine("No 12 Galle Road", 280, 216, 730, 266),
+        )
+        val r = ReceiptParser.parse(lines, today)
+        assertTrue("LANKA TECH SOLUTIONS PVT LTD" in r.merchantOptions)
+        assertTrue(r.merchantOptions.none { it.contains("Galle") })
+    }
+
+    @Test
     fun wordFragmentsAreNotBillNumbers() {
         assertNull(ReceiptParser.parseText("Shop\nReceipt No: 0des", today).billNumber)
         assertEquals("A-104", ReceiptParser.parseText("Shop\nBill No: A-104", today).billNumber)
