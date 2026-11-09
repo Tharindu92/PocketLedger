@@ -9,12 +9,18 @@ import com.billbook.app.BillBookApp
 import com.billbook.app.data.Profile
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import com.billbook.app.data.Categories
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.YearMonth
@@ -50,7 +56,7 @@ class HomeViewModel(private val app: BillBookApp) : ViewModel() {
             dao.observeBetween(profileId, m.atDay(1).toEpochDay(), m.atEndOfMonth().toEpochDay())
         }
 
-    fun selectProfile(id: Long) = app.settings.setActiveProfile(id)
+    fun selectProfile(id: Long) { clearSelection(); app.settings.setActiveProfile(id) }
 
     val state: StateFlow<HomeState> = combine(month, filter, monthTransactions) { m, f, list ->
         HomeState(
@@ -71,9 +77,68 @@ class HomeViewModel(private val app: BillBookApp) : ViewModel() {
     val pendingDetections: StateFlow<Int> = app.database.detected().observePendingCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    fun previousMonth() = month.update { it.minusMonths(1) }
-    fun nextMonth() = month.update { it.plusMonths(1) }
-    fun setFilter(type: TxType?) { filter.value = type }
+    /** Entries ticked for deleting; empty when the list is not in selection mode. */
+    private val _selected = MutableStateFlow<Set<Long>>(emptySet())
+    val selected: StateFlow<Set<Long>> = _selected
+
+    fun toggleSelection(id: Long) = _selected.update { if (id in it) it - id else it + id }
+
+    /** Ticks every entry currently shown, or unticks them all when they are already ticked. */
+    fun toggleSelectAll() {
+        val shown = state.value.items.map { it.id }.toSet()
+        _selected.update { if (it.containsAll(shown)) emptySet() else shown }
+    }
+
+    fun clearSelection() { _selected.value = emptySet() }
+
+    /** Deletes the ticked entries that are on screen, with their bill photos. */
+    fun deleteSelected(onDone: (Int) -> Unit) {
+        val doomed = selectedItems()
+        _selected.value = emptySet()
+        if (doomed.isEmpty()) return
+        viewModelScope.launch {
+            dao.deleteAll(doomed)
+            withContext(Dispatchers.IO) { doomed.forEach { t -> t.imagePath?.let { File(it).delete() } } }
+            onDone(doomed.size)
+        }
+    }
+
+    /** Ticked entries that are on screen. */
+    private fun selectedItems(): List<Transaction> = state.value.items.filter { it.id in _selected.value }
+
+    /** Category names to offer per type: the built-in ones, then any custom ones used before. */
+    val categories: StateFlow<Map<TxType, List<String>>> = dao.observeUsedCategories()
+        .map { used ->
+            TxType.entries.associateWith { type ->
+                (Categories.defaultsFor(type) + used.filter { it.type == type }.map { it.category }).distinct()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Sets [category] on the ticked entries of [type]; ticked entries of the other type keep theirs. */
+    fun setCategory(type: TxType, category: String, onDone: (Int) -> Unit) {
+        val changed = selectedItems().filter { it.type == type }.map { it.copy(category = category) }
+        if (changed.isEmpty()) return
+        viewModelScope.launch {
+            dao.upsertAll(changed)
+            onDone(changed.size)
+        }
+    }
+
+    /** Moves the ticked entries to another profile; they disappear from this list. */
+    fun moveToProfile(profileId: Long, onDone: (Int) -> Unit) {
+        val moved = selectedItems().filter { it.profileId != profileId }.map { it.copy(profileId = profileId) }
+        _selected.value = emptySet()
+        if (moved.isEmpty()) return
+        viewModelScope.launch {
+            dao.upsertAll(moved)
+            onDone(moved.size)
+        }
+    }
+
+    fun previousMonth() { clearSelection(); month.update { it.minusMonths(1) } }
+    fun nextMonth() { clearSelection(); month.update { it.plusMonths(1) } }
+    fun setFilter(type: TxType?) { clearSelection(); filter.value = type }
 
     companion object {
         val Factory = viewModelFactory {

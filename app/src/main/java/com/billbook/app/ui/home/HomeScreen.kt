@@ -10,7 +10,24 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -101,7 +118,7 @@ import java.io.File
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     onOpen: (Long) -> Unit,
@@ -192,9 +209,53 @@ fun HomeScreen(
             .addOnFailureListener { scanWithCamera() }
     }
 
+    val selected by vm.selected.collectAsStateWithLifecycle()
+    val selecting = selected.isNotEmpty()
+    var confirmDelete by remember { mutableStateOf(false) }
+    var pickCategory by remember { mutableStateOf(false) }
+    var pickProfile by remember { mutableStateOf(false) }
+    val categories by vm.categories.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    fun announce(text: String) { scope.launch { snackbar.showSnackbar(text) } }
+    fun entries(n: Int) = if (n == 1) "1 entry" else "$n entries"
+    BackHandler(enabled = selecting) { vm.clearSelection() }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
+            if (selecting) {
+                val allShown = state.items.isNotEmpty() && state.items.all { it.id in selected }
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = vm::clearSelection) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel selection")
+                        }
+                    },
+                    title = { Text("${selected.size} selected") },
+                    actions = {
+                        IconButton(onClick = vm::toggleSelectAll) {
+                            Icon(
+                                if (allShown) Icons.Default.Deselect else Icons.Default.SelectAll,
+                                contentDescription = if (allShown) "Select none" else "Select all",
+                            )
+                        }
+                        IconButton(onClick = { pickCategory = true }) {
+                            Icon(Icons.Default.Category, contentDescription = "Change category")
+                        }
+                        if (profiles.size > 1) {
+                            IconButton(onClick = { pickProfile = true }) {
+                                Icon(Icons.Default.DriveFileMove, contentDescription = "Move to profile")
+                            }
+                        }
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete selected")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                )
+            } else TopAppBar(
                 title = {
                     Box {
                         Row(
@@ -253,7 +314,7 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            if (!selecting) ExtendedFloatingActionButton(
                 onClick = { showSheet = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text("Add") },
@@ -289,11 +350,103 @@ fun HomeScreen(
             if (state.items.isEmpty()) {
                 item { EmptyState(onScan = ::scanBill, onManual = { onAdd(TxType.EXPENSE) }) }
             }
+            if (state.items.isNotEmpty() && !selecting) {
+                item {
+                    Text(
+                        "Long-press an entry to select several",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+            }
             items(state.items, key = { it.id }) { t ->
-                TransactionRow(t, t.currency.ifBlank { settings.currency }) { onOpen(t.id) }
+                TransactionRow(
+                    t,
+                    t.currency.ifBlank { settings.currency },
+                    selected = if (selecting) t.id in selected else null,
+                    onClick = { if (selecting) vm.toggleSelection(t.id) else onOpen(t.id) },
+                    onLongClick = { vm.toggleSelection(t.id) },
+                )
                 HorizontalDivider()
             }
         }
+    }
+
+    if (confirmDelete) {
+        val count = state.items.count { it.id in selected }
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(if (count == 1) "Delete 1 entry?" else "Delete $count entries?") },
+            text = { Text("Their bill photos are deleted too. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    vm.deleteSelected { n -> announce("${entries(n)} deleted") }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (pickCategory) {
+        val chosen = state.items.filter { it.id in selected }
+        // Expense and income categories differ, so offer each list only for the types that are ticked.
+        val types = TxType.entries.filter { type -> chosen.any { it.type == type } }
+        AlertDialog(
+            onDismissRequest = { pickCategory = false },
+            title = { Text("Category for ${entries(chosen.size)}") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    types.forEach { type ->
+                        val count = chosen.count { it.type == type }
+                        val current = chosen.filter { it.type == type }.map { it.category }.distinct().singleOrNull()
+                        Text(
+                            (if (type == TxType.INCOME) "Income" else "Expenses") +
+                                if (types.size > 1) " (${entries(count)})" else "",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            categories[type].orEmpty().forEach { name ->
+                                FilterChip(
+                                    selected = name == current,
+                                    onClick = {
+                                        if (types.size == 1) pickCategory = false
+                                        vm.setCategory(type, name) { n -> announce("${entries(n)} set to $name") }
+                                    },
+                                    label = { Text(name) },
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickCategory = false }) { Text("Done") } },
+        )
+    }
+
+    if (pickProfile) {
+        AlertDialog(
+            onDismissRequest = { pickProfile = false },
+            title = { Text("Move ${entries(state.items.count { it.id in selected })} to") },
+            text = {
+                Column {
+                    profiles.filter { it.id != activeProfile?.id }.forEach { p ->
+                        ListItem(
+                            modifier = Modifier.clickable {
+                                pickProfile = false
+                                vm.moveToProfile(p.id) { n -> announce("${entries(n)} moved to ${p.name}") }
+                            },
+                            leadingContent = { Icon(Icons.Default.Group, contentDescription = null) },
+                            headlineContent = { Text(p.name) },
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pickProfile = false }) { Text("Cancel") } },
+        )
     }
 
     if (showSheet) {
@@ -404,8 +557,16 @@ private fun FilterRow(filter: TxType?, onFilter: (TxType?) -> Unit) {
     }
 }
 
+/** [selected] is null outside selection mode; otherwise a tick box replaces the icon. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TransactionRow(t: Transaction, currency: String, onClick: () -> Unit) {
+private fun TransactionRow(
+    t: Transaction,
+    currency: String,
+    selected: Boolean?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val income = t.type == TxType.INCOME
     val title = t.party.ifBlank { t.category.ifBlank { if (income) "Income" else "Expense" } }
     val details = listOfNotNull(
@@ -415,12 +576,21 @@ private fun TransactionRow(t: Transaction, currency: String, onClick: () -> Unit
     ).joinToString(" · ")
 
     ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        colors = if (selected == true) {
+            ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+        } else {
+            ListItemDefaults.colors()
+        },
         leadingContent = {
-            Icon(
-                if (t.imagePath != null) Icons.Default.Receipt else Icons.Outlined.Payments,
-                contentDescription = if (t.imagePath != null) "Has bill photo" else null,
-            )
+            if (selected != null) {
+                Checkbox(checked = selected, onCheckedChange = { onClick() })
+            } else {
+                Icon(
+                    if (t.imagePath != null) Icons.Default.Receipt else Icons.Outlined.Payments,
+                    contentDescription = if (t.imagePath != null) "Has bill photo" else null,
+                )
+            }
         },
         headlineContent = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = { Text(details, maxLines = 1, overflow = TextOverflow.Ellipsis) },
