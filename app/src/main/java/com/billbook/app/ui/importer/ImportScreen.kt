@@ -57,6 +57,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.billbook.app.data.Profile
 import com.billbook.app.data.TxType
 import com.billbook.app.importer.BankCsvParser
+import com.billbook.app.importer.BankPdfParser
 import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.theme.MoneyColors
 import com.billbook.app.util.Money
@@ -148,10 +149,14 @@ private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (result?.source == "PDF") {
-                    Notice(
-                        "Read from a PDF with text recognition. Please check dates, amounts and income/expense " +
-                            "before importing. Rows marked “check” were partly guessed."
+                when (result?.source) {
+                    BankPdfParser.SOURCE_OCR -> Notice(
+                        "This PDF is a scan, so it was read with text recognition. Please check dates, amounts " +
+                            "and income/expense before importing. Rows marked “check” were partly guessed."
+                    )
+                    BankPdfParser.SOURCE_TEXT -> Notice(
+                        "Read from the PDF's text. Each bank lays out statements differently, so please check " +
+                            "the rows marked “check” (income/expense or date was guessed)."
                     )
                 }
                 val duplicates = items.count { it.duplicate }

@@ -10,6 +10,9 @@ import android.os.ParcelFileDescriptor
 import com.billbook.app.ocr.OcrLine
 import com.billbook.app.ocr.ReceiptParser
 import com.google.mlkit.vision.common.InputImage
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +46,40 @@ class StatementReader(private val context: Context) {
             BankCsvParser.parse(text, fallbackCurrency, columns)
         }
 
-    /** Renders each page, reads it with ML Kit and parses the rows. [onPage] reports progress. */
+    /**
+     * Reads the text stored in the PDF (exact, fast); only scanned PDFs without text are rendered
+     * and read with OCR. [onPage] reports OCR progress.
+     */
     suspend fun readPdf(file: File, fallbackCurrency: String, onPage: (Int, Int) -> Unit): StatementParseResult {
+        extractText(file)?.let { rows -> return BankPdfParser.parse(rows, fallbackCurrency) }
+        return readPdfWithOcr(file, fallbackCurrency, onPage)
+    }
+
+    /**
+     * Text rows of a digital PDF in reading order, or null when it holds (almost) no text, i.e. it
+     * is a scan or photo.
+     */
+    private suspend fun extractText(file: File): List<String>? = withContext(Dispatchers.IO) {
+        try {
+            PDFBoxResourceLoader.init(context)
+            PDDocument.load(file).use { doc ->
+                val pages = minOf(doc.numberOfPages, MAX_PAGES)
+                val stripper = PDFTextStripper().apply {
+                    sortByPosition = true   // rows top to bottom, words left to right
+                    startPage = 1
+                    endPage = pages
+                }
+                val text = stripper.getText(doc)
+                // A scanned page has no text layer; a statement page has hundreds of characters.
+                if (text.count { it.isLetterOrDigit() } < MIN_TEXT_CHARS_PER_PAGE * pages) return@withContext null
+                text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            }
+        } catch (e: IOException) {
+            null   // damaged or password-protected: try OCR, which fails with a clear message if needed
+        }
+    }
+
+    private suspend fun readPdfWithOcr(file: File, fallbackCurrency: String, onPage: (Int, Int) -> Unit): StatementParseResult {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
             val rows = mutableListOf<String>()
@@ -67,7 +102,7 @@ class StatementReader(private val context: Context) {
                     }
                 }
             }
-            return BankPdfParser.parse(rows, fallbackCurrency)
+            return BankPdfParser.parse(rows, fallbackCurrency, source = BankPdfParser.SOURCE_OCR)
         } finally {
             recognizer.close()
         }
@@ -91,5 +126,6 @@ class StatementReader(private val context: Context) {
     private companion object {
         const val MAX_PAGES = 40
         const val RENDER_WIDTH = 1650
+        const val MIN_TEXT_CHARS_PER_PAGE = 30
     }
 }

@@ -70,6 +70,8 @@ dependencies {
     // Document scanner (Google Play services, on-device): finds the paper edges, crops away the
     // background and straightens the photo before OCR
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
+    // Reads the text stored inside PDF bank statements (pure Java, Apache 2.0)
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     testImplementation("junit:junit:4.13.2")
 }

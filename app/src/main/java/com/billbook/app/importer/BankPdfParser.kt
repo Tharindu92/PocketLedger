@@ -26,7 +26,16 @@ object BankPdfParser {
     private val CREDIT_WORD = Regex("""\b(H|Haben|Cr|Credit|Gutschrift|Incoming|Eingang)\b""")
     private val EURO = Regex("""€|\bEUR\b""")
 
-    fun parse(rows: List<String>, fallbackCurrency: String, year: Int = LocalDate.now().year): StatementParseResult {
+    /** Source label for PDFs read from their text; scanned PDFs read with OCR use [SOURCE_OCR]. */
+    const val SOURCE_TEXT = "PDF"
+    const val SOURCE_OCR = "PDF (scanned, read with OCR)"
+
+    fun parse(
+        rows: List<String>,
+        fallbackCurrency: String,
+        year: Int = LocalDate.now().year,
+        source: String = SOURCE_TEXT,
+    ): StatementParseResult {
         val lines = mutableListOf<StatementLine>()
         var skipped = 0
         var lastDate: LocalDate? = null
@@ -45,6 +54,12 @@ object BankPdfParser {
             if (amount == null || SKIP.containsMatchIn(row)) {
                 // Text-only rows often hold the payee of the booking printed below them.
                 if (amount == null && date == null) previousText = clean(row)
+                return@forEachIndexed
+            }
+            // Without a date of its own, a row of several amounts, or one under a "Total"/"Balance"
+            // label, is a summary (e.g. "Total income  Total expenses" over "400.00  30.52").
+            if (date == null && (AMOUNT.findAll(row).count() >= 3 || SKIP.containsMatchIn(previousText))) {
+                previousText = ""
                 return@forEachIndexed
             }
             val bookingDate = date ?: lastDate?.takeIf { i - lastDateRow <= 2 }
@@ -81,7 +96,7 @@ object BankPdfParser {
             }
             previousText = ""
         }
-        return StatementParseResult(lines, currency.takeIf { it == "EUR" }, "PDF", skipped)
+        return StatementParseResult(lines, currency.takeIf { it == "EUR" }, source, skipped)
     }
 
     private fun clean(s: String) = s.replace(Regex("""\s{2,}"""), " ").trim().trim('-', '|', ':', '·', '*', ' ')

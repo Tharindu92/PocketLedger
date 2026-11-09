@@ -132,6 +132,21 @@ class StatementImportTest {
         assertTrue(r.lines[2].uncertain)
     }
 
+    /** Text rows of a summary box: labels on one line, their values on the next. */
+    @Test
+    fun pdfSummaryBoxesAreNotBookings() {
+        val rows = listOf(
+            "Period: 28 Oct 2026 – 02 Nov 2026 Currency: EUR",
+            "Total income Total expenses Net surplus",
+            "400.00 30.52 369.48",
+            "Closing balance",
+            "369.48",
+            "28/10/2026 REWE Markt -23.10",
+        )
+        val r = BankPdfParser.parse(rows, "EUR", year = 2026)
+        assertEquals(listOf(-2310L), r.lines.map { it.amountCents })
+    }
+
     @Test
     fun foreignCardPaymentBecomesBillAmountWithPaidAmount() {
         val line = StatementLine(oct28, -742, "EUR", "DEPARTMENT FOR REGISTRATION", kind = "MasterCard Payment",
