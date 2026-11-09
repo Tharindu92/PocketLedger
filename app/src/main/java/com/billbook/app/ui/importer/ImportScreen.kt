@@ -48,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -146,6 +147,7 @@ fun ImportScreen(uri: Uri, onDone: () -> Unit) {
 private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
     val items = vm.items
     val result = vm.result
+    val categories by vm.categories.collectAsStateWithLifecycle()
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -205,9 +207,11 @@ private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
             ImportRow(
                 item = item,
                 profiles = profiles,
+                categories = categories[item.type].orEmpty(),
                 onToggle = { vm.toggle(index) },
                 onProfile = { vm.setProfile(index, it) },
                 onType = { vm.toggleType(index) },
+                onCategory = { vm.setCategory(index, it) },
             )
             HorizontalDivider()
         }
@@ -228,9 +232,11 @@ private fun Notice(text: String) {
 private fun ImportRow(
     item: ImportItem,
     profiles: List<Profile>,
+    categories: List<String>,
     onToggle: () -> Unit,
     onProfile: (Long) -> Unit,
     onType: () -> Unit,
+    onCategory: (String) -> Unit,
 ) {
     val line = item.line
     val income = item.type == TxType.INCOME
@@ -274,6 +280,7 @@ private fun ImportRow(
             ) {
                 if (profiles.size > 1) ProfilePicker(item.profileId, profiles, onProfile)
                 AssistChip(onClick = onType, label = { Text(if (income) "Income" else "Expense") })
+                CategoryPicker(item.category, categories, onCategory)
                 if (item.duplicate) {
                     Text("Already recorded?", style = MaterialTheme.typography.labelSmall, color = MoneyColors.expense)
                 }
@@ -297,6 +304,36 @@ private fun ProfilePicker(selectedId: Long, profiles: List<Profile>, onPick: (Lo
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             profiles.forEach { p ->
                 DropdownMenuItem(text = { Text(p.name) }, onClick = { open = false; onPick(p.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryPicker(selected: String, categories: List<String>, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = {
+                Text(
+                    selected.ifBlank { "Category" },
+                    color = if (selected.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                    maxLines = 1,
+                )
+            },
+            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (selected.isNotBlank()) {
+                DropdownMenuItem(text = { Text("No category") }, onClick = { open = false; onPick("") })
+                HorizontalDivider()
+            }
+            categories.forEach { name ->
+                DropdownMenuItem(
+                    text = { Text(name, fontWeight = if (name == selected) FontWeight.SemiBold else null) },
+                    onClick = { open = false; onPick(name) },
+                )
             }
         }
     }

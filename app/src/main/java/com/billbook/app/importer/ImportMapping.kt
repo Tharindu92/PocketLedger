@@ -8,11 +8,19 @@ import kotlin.math.abs
 /** Turns statement lines into entries and spots bookings that are already recorded. Pure Kotlin. */
 object ImportMapping {
 
-    fun toTransaction(line: StatementLine, type: TxType, profileId: Long): Transaction {
+    /** Category suggested from the booking text; only expenses are guessed. */
+    fun guessCategory(line: StatementLine, type: TxType): String =
+        if (type == TxType.EXPENSE) {
+            ReceiptParser.guessCategory(listOf(line.party, line.reference, line.kind).filter { it.isNotBlank() }).orEmpty()
+        } else {
+            ""
+        }
+
+    /** [category] null means use the guess. */
+    fun toTransaction(line: StatementLine, type: TxType, profileId: Long, category: String? = null): Transaction {
         val charged = abs(line.amountCents)
         // Card payment abroad: the purchase amount is the entry, the account amount is what was paid.
         val foreign = line.originalAmountCents != null && line.originalCurrency != null
-        val text = listOf(line.party, line.reference, line.kind).filter { it.isNotBlank() }
         return Transaction(
             profileId = profileId,
             type = type,
@@ -20,7 +28,7 @@ object ImportMapping {
             currency = if (foreign) line.originalCurrency!! else line.currency,
             dateEpochDay = line.date.toEpochDay(),
             party = line.party.take(60),
-            category = if (type == TxType.EXPENSE) ReceiptParser.guessCategory(text).orEmpty() else "",
+            category = category ?: guessCategory(line, type),
             paymentMethod = paymentMethod("${line.kind} ${line.reference}"),
             notes = listOf(line.reference, line.kind).filter { it.isNotBlank() && it != line.party }
                 .joinToString(" · ").take(200),

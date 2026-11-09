@@ -19,7 +19,9 @@ import com.billbook.app.importer.StatementParseResult
 import com.billbook.app.importer.StatementReader
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.billbook.app.data.Categories
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -29,6 +31,8 @@ data class ImportItem(
     val selected: Boolean,
     val profileId: Long,
     val type: TxType,
+    /** Guessed from the booking text at first; blank when nothing fitted. */
+    val category: String,
     /** An entry with the same amount and date is already saved; unticked by default. */
     val duplicate: Boolean,
 )
@@ -100,11 +104,13 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
         val profile = app.settings.activeProfileId.value
         items = parsed.lines.sortedByDescending { it.date }.map { line ->
             val duplicate = ImportMapping.isDuplicate(line, existing)
+            val type = if (line.amountCents > 0) TxType.INCOME else TxType.EXPENSE
             ImportItem(
                 line = line,
                 selected = !duplicate,
                 profileId = profile,
-                type = if (line.amountCents > 0) TxType.INCOME else TxType.EXPENSE,
+                type = type,
+                category = ImportMapping.guessCategory(line, type),
                 duplicate = duplicate,
             )
         }
@@ -113,8 +119,22 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
 
     fun toggle(index: Int) = edit(index) { it.copy(selected = !it.selected) }
     fun setProfile(index: Int, profileId: Long) = edit(index) { it.copy(profileId = profileId, selected = true) }
-    fun toggleType(index: Int) =
-        edit(index) { it.copy(type = if (it.type == TxType.INCOME) TxType.EXPENSE else TxType.INCOME) }
+    /** Switching income/expense also resets the category: the two have different lists. */
+    fun toggleType(index: Int) = edit(index) {
+        val type = if (it.type == TxType.INCOME) TxType.EXPENSE else TxType.INCOME
+        it.copy(type = type, category = ImportMapping.guessCategory(it.line, type))
+    }
+
+    fun setCategory(index: Int, category: String) = edit(index) { it.copy(category = category, selected = true) }
+
+    /** Category names per type: built-in ones, then custom ones used before. */
+    val categories: StateFlow<Map<TxType, List<String>>> = app.database.transactions().observeUsedCategories()
+        .map { used ->
+            TxType.entries.associateWith { type ->
+                (Categories.defaultsFor(type) + used.filter { it.type == type }.map { it.category }).distinct()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun selectAll(selected: Boolean) {
         items = items.map { it.copy(selected = selected) }
@@ -135,7 +155,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
         stage = Stage.Reading("Saving…")
         viewModelScope.launch {
             app.database.transactions().upsertAll(
-                chosen.map { ImportMapping.toTransaction(it.line, it.type, it.profileId) }
+                chosen.map { ImportMapping.toTransaction(it.line, it.type, it.profileId, it.category) }
             )
             stage = Stage.Done(chosen.size)
         }
