@@ -41,6 +41,9 @@ data class FormState(
     val notes: String = "",
     val imagePath: String? = null,
     val ocrText: String? = null,
+    /** Amount actually charged in another currency (e.g. EUR card for a LKR bill); blank if none. */
+    val paidAmount: String = "",
+    val paidCurrency: String = "",
 ) {
     companion object {
         fun from(t: Transaction) = FormState(
@@ -57,6 +60,8 @@ data class FormState(
             notes = t.notes,
             imagePath = t.imagePath,
             ocrText = t.ocrText,
+            paidAmount = t.paidAmountCents?.let(Money::toInput).orEmpty(),
+            paidCurrency = t.paidCurrency.orEmpty(),
         )
     }
 }
@@ -104,6 +109,17 @@ class EditViewModel(
         private set
     var taxError by mutableStateOf<String?>(null)
         private set
+    var paidError by mutableStateOf<String?>(null)
+        private set
+
+    /** Suggested currency for "paid in another currency": the home currency when the bill differs. */
+    fun defaultPaidCurrency(): String =
+        app.settings.currency.takeIf { it != form.currency }.orEmpty()
+
+    fun setPaidCurrency(value: String) =
+        update { it.copy(paidCurrency = value.filter { c -> c.isLetter() }.uppercase().take(3)) }
+
+    fun clearPaid() = update { it.copy(paidAmount = "", paidCurrency = "") }
 
     val isExisting: Boolean get() = id > 0
 
@@ -142,6 +158,7 @@ class EditViewModel(
         form = transform(form)
         amountError = null
         taxError = null
+        paidError = null
     }
 
     /** Adds a piece of a name to the business field, dropping words the two share. */
@@ -234,12 +251,25 @@ class EditViewModel(
             taxError = "Enter a valid tax amount"
             return
         }
+        val currency = f.currency.trim().uppercase().ifBlank { app.settings.currency }
+        var paid: Long? = null
+        var paidCurrency: String? = null
+        if (f.paidAmount.isNotBlank()) {
+            paid = Money.parseToCents(f.paidAmount)
+            paidCurrency = f.paidCurrency.trim().uppercase()
+            when {
+                paid == null || paid <= 0 -> { paidError = "Enter the amount charged, greater than 0"; return }
+                paidCurrency.length != 3 -> { paidError = "Choose the currency you paid in"; return }
+            }
+            // Paid in the bill's own currency is not a conversion.
+            if (paidCurrency == currency) { paid = null; paidCurrency = null }
+        }
         val transaction = Transaction(
             id = existing?.id ?: 0,
             profileId = f.profileId,
             type = f.type,
             amountCents = amount,
-            currency = f.currency.trim().uppercase().ifBlank { app.settings.currency },
+            currency = currency,
             taxCents = tax,
             dateEpochDay = f.date.toEpochDay(),
             party = f.party.trim(),
@@ -250,6 +280,8 @@ class EditViewModel(
             imagePath = f.imagePath,
             ocrText = f.ocrText,
             createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+            paidAmountCents = paid,
+            paidCurrency = paidCurrency,
         )
         saved = true
         viewModelScope.launch {

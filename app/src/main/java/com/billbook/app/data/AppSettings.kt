@@ -31,6 +31,20 @@ class AppSettings(context: Context) {
     var autoAddDetected by mutableStateOf(prefs.getBoolean(KEY_AUTO_ADD, false))
         private set
 
+    /**
+     * Whether exchange rates may be downloaded: null until the user has been asked. Only the
+     * currency codes and dates are sent, never entries.
+     */
+    var onlineRates by mutableStateOf(
+        if (prefs.contains(KEY_ONLINE_RATES)) prefs.getBoolean(KEY_ONLINE_RATES, false) else null
+    )
+        private set
+
+    fun updateOnlineRates(enabled: Boolean) {
+        onlineRates = enabled
+        prefs.edit().putBoolean(KEY_ONLINE_RATES, enabled).apply()
+    }
+
     private val _activeProfileId = MutableStateFlow(prefs.getLong(KEY_ACTIVE_PROFILE, Profile.DEFAULT_ID))
     /** Profile shown on the home screen and used for new entries. */
     val activeProfileId: StateFlow<Long> = _activeProfileId.asStateFlow()
@@ -71,6 +85,7 @@ class AppSettings(context: Context) {
         const val KEY_DETECT_EXPENSES = "detect_expenses"
         const val KEY_AUTO_ADD = "auto_add_detected"
         const val KEY_ACTIVE_PROFILE = "active_profile"
+        const val KEY_ONLINE_RATES = "online_rates"
         const val DEFAULT_CURRENCY = "LKR"
     }
 }

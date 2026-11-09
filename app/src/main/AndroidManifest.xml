@@ -4,6 +4,9 @@
     <!-- To ask "which profile?" in a notification when a bank payment is detected -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Only for downloading exchange rates (currency codes + dates), after the user agrees -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Lets the app list installed (launchable) apps so the user can pick their banking apps -->
     <queries>
         <intent>

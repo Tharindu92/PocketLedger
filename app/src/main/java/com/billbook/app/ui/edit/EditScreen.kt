@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -74,6 +76,7 @@ import com.billbook.app.ui.components.DateField
 import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.components.SuggestField
 import com.billbook.app.util.ImageFiles
+import com.billbook.app.util.Money
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -188,6 +191,8 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
             val hints = vm.suggestions
             OtherMatches(hints.amounts, form.amount, { it }) { v -> vm.update { it.copy(amount = v) } }
 
+            PaidInOtherCurrency(form, vm)
+
             DateField(
                 label = if (income) "Date received" else "Bill date",
                 date = form.date,
@@ -284,6 +289,56 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
 
     if (showImage) {
         form.imagePath?.let { FullScreenImage(it) { showImage = false } }
+    }
+}
+
+/**
+ * "Paid in another currency": what the card or bank actually charged, e.g. 7.42 EUR for a
+ * 2,500 LKR bill. Reports use it instead of an exchange rate, so card fees are included.
+ */
+@Composable
+private fun PaidInOtherCurrency(form: FormState, vm: EditViewModel) {
+    var open by remember { mutableStateOf(false) }
+    if (!open && form.paidAmount.isBlank()) {
+        TextButton(onClick = {
+            open = true
+            if (form.paidCurrency.isBlank()) vm.setPaidCurrency(vm.defaultPaidCurrency())
+        }) {
+            Icon(Icons.Default.CurrencyExchange, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("  Paid in another currency? (e.g. by card)")
+        }
+        return
+    }
+    val bill = Money.parseToCents(form.amount)
+    val paid = Money.parseToCents(form.paidAmount)
+    val rateHint = if (bill != null && paid != null && bill > 0 && paid > 0 &&
+        form.paidCurrency.length == 3 && form.paidCurrency != form.currency
+    ) {
+        "1 ${form.paidCurrency} = ${"%.4f".format(bill.toDouble() / paid)} ${form.currency}"
+    } else {
+        "What your card or bank actually charged. Used in reports instead of an exchange rate."
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        OutlinedTextField(
+            value = form.paidAmount,
+            onValueChange = { v -> vm.update { it.copy(paidAmount = v) } },
+            label = { Text("Amount paid") },
+            isError = vm.paidError != null,
+            supportingText = { Text(vm.paidError ?: rateHint) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.weight(1f),
+        )
+        SuggestField(
+            label = "Paid in",
+            value = form.paidCurrency,
+            onValueChange = vm::setPaidCurrency,
+            options = (listOf(form.paidCurrency).filter { it.length == 3 } + Categories.currencies).distinct(),
+            modifier = Modifier.width(112.dp),
+        )
+        IconButton(onClick = { vm.clearPaid(); open = false }, modifier = Modifier.padding(top = 8.dp)) {
+            Icon(Icons.Default.Close, contentDescription = "Remove paid amount")
+        }
     }
 }
 

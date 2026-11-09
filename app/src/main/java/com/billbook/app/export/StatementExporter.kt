@@ -31,7 +31,14 @@ class StatementData(
     items: List<Transaction>,
     /** Profile the statement is for, e.g. "Personal" or "Cricket Club". */
     val profileName: String = "",
+    /** How entries in other currencies were converted into [currency], by entry id. */
+    val conversions: Map<Long, Conversion> = emptyMap(),
+    /** Entries left out because there was no exchange rate or paid amount for them. */
+    val unconverted: List<Transaction> = emptyList(),
+    /** Currencies the statement covers (more than one for a combined statement). */
+    val sourceCurrencies: List<String> = listOf(currency),
 ) {
+    val isCombined: Boolean get() = sourceCurrencies.size > 1
     val transactions: List<Transaction> = items.sortedWith(compareBy({ it.dateEpochDay }, { it.id }))
     val totalIncome: Long = transactions.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
     val totalExpense: Long = transactions.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
@@ -64,12 +71,16 @@ object StatementExporter {
             writer.write(cells.joinToString(",") { escape(it) })
             writer.write("\r\n")
         }
-        row(
+        // Combined statements add where each amount came from; single-currency files are unchanged.
+        val combined = data.isCombined
+        val header = mutableListOf(
             "Profile", "Date", "Type", "Business / Party", "Bill Number", "Category", "Payment Method",
             "Amount", "Signed Amount", "Tax", "Currency", "Notes",
         )
+        if (combined) header += listOf("Original Amount", "Original Currency", "Converted With")
+        row(*header.toTypedArray())
         data.transactions.forEach { t ->
-            row(
+            val cells = mutableListOf(
                 data.profileName,
                 t.date.toString(),
                 if (t.type == TxType.INCOME) "Income" else "Expense",
@@ -83,9 +94,39 @@ object StatementExporter {
                 t.currency.ifBlank { data.currency },
                 t.notes,
             )
+            if (combined) {
+                val c = data.conversions[t.id]
+                cells += listOf(
+                    Money.toInput(c?.originalAmountCents ?: t.amountCents),
+                    c?.originalCurrency ?: t.currency.ifBlank { data.currency },
+                    c?.let { describe(it, data.currency, iso = true) }.orEmpty(),
+                )
+            }
+            row(*cells.toTypedArray())
+        }
+        // Left out of the totals, but listed so nothing disappears silently.
+        data.unconverted.forEach { t ->
+            row(
+                data.profileName, t.date.toString(), if (t.type == TxType.INCOME) "Income" else "Expense",
+                t.party, t.billNumber, t.category, t.paymentMethod, "", "", "", "", t.notes,
+                Money.toInput(t.amountCents), t.currency, "Not included: no exchange rate",
+            )
         }
         writer.flush()
     }
+
+    /** "Amount paid", "Rate 1 EUR = 369.9358 LKR (2026-10-28)" or "Your rate 1 EUR = 370 LKR". */
+    internal fun describe(c: Conversion, report: String, iso: Boolean = false): String = when (c.method) {
+        ConversionMethod.PAID -> "Amount paid"
+        ConversionMethod.RATE, ConversionMethod.MANUAL_RATE -> {
+            val rate = "1 $report = ${formatRate(c.rate ?: 0.0)} ${c.originalCurrency}"
+            val day = c.rateDay?.let { if (iso) it.toString() else it.format(DateTimeFormatter.ofPattern("dd MMM yyyy")) }
+            if (c.method == ConversionMethod.MANUAL_RATE) "Your rate $rate" else "Rate $rate" + (day?.let { " ($it)" } ?: "")
+        }
+    }
+
+    internal fun formatRate(rate: Double): String =
+        "%.4f".format(java.util.Locale.ROOT, rate).trimEnd('0').trimEnd('.')
 
     private fun escape(value: String): String {
         // Neutralise spreadsheet formulas in free-text cells.
@@ -152,12 +193,24 @@ private class PdfStatementWriter(private val data: StatementData) {
     private val zebraFill = Paint().apply { color = 0xFFF7F9FB.toInt(); style = Paint.Style.FILL }
     private val accentFill = Paint().apply { color = 0xFF1B6B50.toInt(); style = Paint.Style.FILL }
 
-    private val ledgerColumns = listOf(
+    private val combined = data.isCombined
+
+    // Both layouts add up to the 523pt content width; combined statements add the original amount.
+    private val ledgerColumns = if (!combined) listOf(
         Col("Date", 56f),
         Col("Business / party", 128f),
         Col("Bill no.", 64f),
         Col("Category", 84f),
         Col("Payment", 63f),
+        Col("Amount", 64f, right = true),
+        Col("Balance", 64f, right = true),
+    ) else listOf(
+        Col("Date", 50f),
+        Col("Business / party", 104f),
+        Col("Bill no.", 52f),
+        Col("Category", 66f),
+        Col("Payment", 50f),
+        Col("Original", 73f, right = true),
         Col("Amount", 64f, right = true),
         Col("Balance", 64f, right = true),
     )
@@ -170,6 +223,8 @@ private class PdfStatementWriter(private val data: StatementData) {
             categoryTable("Income by category", data.byCategory(TxType.INCOME), data.totalIncome)
             categoryTable("Expenses by category", data.byCategory(TxType.EXPENSE), data.totalExpense)
             ledger()
+            conversionNotes()
+            notIncluded()
             finishPage()
             doc.writeTo(out)
         } finally {
@@ -231,7 +286,9 @@ private class PdfStatementWriter(private val data: StatementData) {
         }
         text(
             "Period: ${data.from.format(dateFormat)} – ${data.to.format(dateFormat)}    " +
-                "Currency: ${data.currency}    Entries: ${data.transactions.size}",
+                "Currency: ${data.currency}" +
+                (if (combined) " (combined: ${data.sourceCurrencies.joinToString(" + ")})" else "") +
+                "    Entries: ${data.transactions.size}",
             x, bodyPaint,
         )
         y += 14f
@@ -296,18 +353,25 @@ private class PdfStatementWriter(private val data: StatementData) {
             if (ensureSpace(rowHeight)) tableHeader(ledgerColumns)
             if (index % 2 == 1) canvas.drawRect(margin, y - 2f, margin + contentWidth, y + rowHeight - 2f, zebraFill)
             balance += t.signedCents
-            drawRow(
-                ledgerColumns,
-                listOf(
-                    t.date.format(shortDate) to bodyPaint,
-                    t.party.ifBlank { "—" } to bodyPaint,
-                    t.billNumber to bodyPaint,
-                    t.category to bodyPaint,
-                    t.paymentMethod to bodyPaint,
-                    Money.format(t.signedCents) to (if (t.type == TxType.INCOME) incomeRight else expenseRight),
-                    Money.format(balance) to bodyRight,
-                ),
+            val cells = mutableListOf(
+                t.date.format(shortDate) to bodyPaint,
+                t.party.ifBlank { "—" } to bodyPaint,
+                t.billNumber to bodyPaint,
+                t.category to bodyPaint,
+                t.paymentMethod to bodyPaint,
             )
+            if (combined) {
+                // Original amount for converted entries, marked * for an exchange-rate estimate.
+                val c = data.conversions[t.id]
+                val original = c?.let {
+                    Money.format(it.originalAmountCents) + " " + it.originalCurrency +
+                        if (it.method == ConversionMethod.PAID) "" else "*"
+                }.orEmpty()
+                cells += original to mutedRight
+            }
+            cells += Money.format(t.signedCents) to (if (t.type == TxType.INCOME) incomeRight else expenseRight)
+            cells += Money.format(balance) to bodyRight
+            drawRow(ledgerColumns, cells)
             y += rowHeight
         }
 
@@ -322,6 +386,57 @@ private class PdfStatementWriter(private val data: StatementData) {
         ).forEach { (label, value) ->
             text(label, labelRight - 70f, boldRight)
             text(Money.format(value), margin + contentWidth - 3f, boldRight)
+            y += rowHeight
+        }
+    }
+
+    /** Which exchange rates were used, so readers can tell exact amounts from estimates. */
+    private fun conversionNotes() {
+        if (!combined || data.conversions.isEmpty()) return
+        val paid = data.conversions.values.count { it.method == ConversionMethod.PAID }
+        val rates = data.conversions.values.filter { it.method != ConversionMethod.PAID }
+            .map { StatementExporter.describe(it, data.currency) }
+            .distinct()
+        y += 10f
+        ensureSpace(18f + rowHeight * 2)
+        text("Currency conversion", margin, headingPaint)
+        y += 18f
+        if (paid > 0) {
+            text("$paid ${if (paid == 1) "entry uses" else "entries use"} the amount actually paid in ${data.currency}.", margin, bodyPaint, contentWidth)
+            y += rowHeight
+        }
+        if (rates.isNotEmpty()) {
+            text("* Converted with an exchange rate (estimate, without bank fees):", margin, bodyPaint, contentWidth)
+            y += rowHeight
+            rates.forEach {
+                ensureSpace(rowHeight)
+                text("•  $it", margin + 8f, mutedPaint, contentWidth - 8f)
+                y += rowHeight
+            }
+        }
+    }
+
+    /** Entries with no exchange rate: listed, but not part of any total. */
+    private fun notIncluded() {
+        if (data.unconverted.isEmpty()) return
+        val columns = listOf(Col("Date", 60f), Col("Business / party", contentWidth - 60f - 120f), Col("Amount", 120f, true))
+        y += 10f
+        ensureSpace(18f + 16f + rowHeight * 2)
+        text("Not included: no exchange rate", margin, headingPaint)
+        y += 18f
+        text("These entries are not part of the totals above.", margin, mutedPaint, contentWidth)
+        y += rowHeight
+        tableHeader(columns)
+        data.unconverted.forEach { t ->
+            if (ensureSpace(rowHeight)) tableHeader(columns)
+            drawRow(
+                columns,
+                listOf(
+                    t.date.format(shortDate) to bodyPaint,
+                    t.party.ifBlank { "—" } to bodyPaint,
+                    "${Money.format(t.signedCents)} ${t.currency}" to bodyRight,
+                ),
+            )
             y += rowHeight
         }
     }

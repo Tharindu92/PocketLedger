@@ -57,6 +57,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -452,6 +453,7 @@ private fun SheetOption(icon: ImageVector, title: String, subtitle: String?, onC
 private fun SettingsDialog(settings: AppSettings, onDismiss: () -> Unit) {
     var currency by remember { mutableStateOf(settings.currency) }
     var business by remember { mutableStateOf(settings.businessName) }
+    var onlineRates by remember { mutableStateOf(settings.onlineRates == true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -475,10 +477,25 @@ private fun SettingsDialog(settings: AppSettings, onDismiss: () -> Unit) {
                         "you can change it on any entry.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Download exchange rates", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "For statements that combine currencies. Only currency codes and dates are sent.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = onlineRates, onCheckedChange = { onlineRates = it })
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { settings.update(currency, business); onDismiss() }) { Text("Save") }
+            TextButton(onClick = {
+                settings.update(currency, business)
+                // Leave "not asked yet" alone unless the user actually flipped the switch.
+                if (onlineRates != (settings.onlineRates == true)) settings.updateOnlineRates(onlineRates)
+                onDismiss()
+            }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

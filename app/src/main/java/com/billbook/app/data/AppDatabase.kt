@@ -9,18 +9,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Transaction::class, DetectedTransaction::class, Profile::class],
-    version = 4,
+    entities = [Transaction::class, DetectedTransaction::class, Profile::class, ExchangeRate::class],
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transactions(): TransactionDao
     abstract fun detected(): DetectedDao
     abstract fun profiles(): ProfileDao
+    abstract fun rates(): ExchangeRateDao
 
     companion object {
         /** [defaultCurrency] is used to fill in the currency of entries created before v2. */

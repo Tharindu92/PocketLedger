@@ -35,6 +35,12 @@ data class Transaction(
     /** Raw text read from the bill photo, kept for reference. */
     val ocrText: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * What was actually charged when paid in another currency, e.g. a LKR bill paid with a EUR
+     * card: amount 2,500.00 LKR, paid 7.42 EUR. Used instead of an exchange rate in reports.
+     */
+    val paidAmountCents: Long? = null,
+    val paidCurrency: String? = null,
 )
 
 val Transaction.date: LocalDate get() = LocalDate.ofEpochDay(dateEpochDay)
