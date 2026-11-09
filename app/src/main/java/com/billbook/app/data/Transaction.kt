@@ -49,3 +49,5 @@ val Transaction.signedCents: Long get() = if (type == TxType.INCOME) amountCents
 
 /** Result row for "which categories has the user already used". */
 data class TypeCategory(val type: TxType, val category: String)
+
+data class PartyCategory(val type: TxType, val party: String, val category: String)

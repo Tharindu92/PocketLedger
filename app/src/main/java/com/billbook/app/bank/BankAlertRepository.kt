@@ -1,6 +1,7 @@
 package com.billbook.app.bank
 
 import com.billbook.app.BillBookApp
+import com.billbook.app.data.CategoryGuesser
 import com.billbook.app.data.DetectedTransaction
 import com.billbook.app.data.DetectionStatus
 import com.billbook.app.data.Transaction
@@ -60,14 +61,18 @@ class BankAlertRepository(private val app: BillBookApp) {
 
     suspend fun get(detectionId: Long) = detected.get(detectionId)
 
-    fun toTransaction(d: DetectedTransaction, profileId: Long) = Transaction(
+    suspend fun toTransaction(d: DetectedTransaction, profileId: Long) = Transaction(
         profileId = profileId,
         type = d.type,
         amountCents = d.amountCents,
         currency = d.currency,
         dateEpochDay = Instant.ofEpochMilli(d.postedAt).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay(),
         party = d.party,
-        category = if (d.type == TxType.INCOME) "Other income" else "",
+        category = CategoryGuesser.guess(
+            d.type,
+            listOf(d.party, d.title, d.text),
+            CategoryGuesser.learn(transactions.partyCategories()),
+        ).ifEmpty { if (d.type == TxType.INCOME) "Other income" else "" },
         paymentMethod = if (d.type == TxType.INCOME) "Bank transfer" else "Card",
         notes = "From ${d.appLabel} notification: ${listOf(d.title, d.text).filter { it.isNotBlank() }.joinToString(" – ")}",
     )

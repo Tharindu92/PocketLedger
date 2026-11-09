@@ -1,5 +1,7 @@
 package com.billbook.app.ocr
 
+import com.billbook.app.data.CategoryGuesser
+import com.billbook.app.data.TxType
 import java.time.LocalDate
 import kotlin.math.abs
 
@@ -508,22 +510,6 @@ object ReceiptParser {
 
     // ------------------------------------------------------------- category
 
-    private val CATEGORY_HINTS: List<Pair<String, Regex>> = listOf(
-        "Fuel" to """\b(fuel|petrol|diesel|filling station|ceypetco|lioc|octane)\b""",
-        "Groceries" to """\b(supermarket|super|keells|cargills|food ?city|arpico|glomark|grocery|groceries|spar|lidl|aldi|walmart|tesco)\b""",
-        "Dining" to """\b(restaurant|cafe|coffee|pizza|burger|kfc|mcdonald'?s|bakery|hotel|dine|kitchen|bistro)\b""",
-        "Medical" to """\b(pharmacy|hospital|clinic|medical|chemist|healthguard|channell?ing)\b""",
-        "Utilities" to """\b(electricity|ceb|leco|water board|dialog|mobitel|slt|hutch|airtel|telecom|broadband|internet)\b""",
-        "Transport" to """\b(taxi|uber|pickme|bus|train|railway|parking|toll)\b""",
-        "Travel" to """\b(airline|airways|flight|booking|guest house|resort)\b""",
-        "Software & Subscriptions" to """\b(software|subscription|hosting|domain|cloud|saas|license|licence)\b""",
-        "Office Supplies" to """\b(stationery|stationary|bookshop|printing|office supplies|toner)\b""",
-        "Government & Fees" to """\b(department|ministry|government|municipal|secretariat|registration of persons|""" +
-            """passport|immigration|motor traffic|stamp duty|finanzamt|b[üu]rgeramt|ausländerbehörde)\b""",
-    ).map { (category, pattern) -> category to Regex(pattern, RegexOption.IGNORE_CASE) }
-
-    internal fun guessCategory(rows: List<String>): String? {
-        val text = rows.joinToString("\n")
-        return CATEGORY_HINTS.firstOrNull { (_, regex) -> regex.containsMatchIn(text) }?.first
-    }
+    internal fun guessCategory(rows: List<String>): String? =
+        CategoryGuesser.guess(TxType.EXPENSE, rows).ifEmpty { null }
 }

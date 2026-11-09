@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.billbook.app.data.Categories
+import com.billbook.app.data.CategoryGuesser
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -50,6 +51,8 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
 
     private val reader = StatementReader(app)
     private var file: File? = null
+    /** Category the user gave each payee before. */
+    private var history: Map<Pair<TxType, String>, String> = emptyMap()
 
     var stage by mutableStateOf<Stage>(Stage.Reading("Reading statement…"))
         private set
@@ -102,6 +105,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
         val to = parsed.lines.maxOf { it.date }.toEpochDay() + ImportMapping.DAYS
         val existing = app.database.transactions().allBetween(from, to)
         val profile = app.settings.activeProfileId.value
+        history = CategoryGuesser.learn(app.database.transactions().partyCategories())
         items = parsed.lines.sortedByDescending { it.date }.map { line ->
             val duplicate = ImportMapping.isDuplicate(line, existing)
             val type = if (line.amountCents > 0) TxType.INCOME else TxType.EXPENSE
@@ -110,7 +114,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
                 selected = !duplicate,
                 profileId = profile,
                 type = type,
-                category = ImportMapping.guessCategory(line, type),
+                category = ImportMapping.guessCategory(line, type, history),
                 duplicate = duplicate,
             )
         }
@@ -122,7 +126,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
     /** Switching income/expense also resets the category: the two have different lists. */
     fun toggleType(index: Int) = edit(index) {
         val type = if (it.type == TxType.INCOME) TxType.EXPENSE else TxType.INCOME
-        it.copy(type = type, category = ImportMapping.guessCategory(it.line, type))
+        it.copy(type = type, category = ImportMapping.guessCategory(it.line, type, history))
     }
 
     fun setCategory(index: Int, category: String) = edit(index) { it.copy(category = category, selected = true) }

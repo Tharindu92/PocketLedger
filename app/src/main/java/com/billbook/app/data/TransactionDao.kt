@@ -41,6 +41,10 @@ interface TransactionDao {
     )
     suspend fun knownParties(): List<String>
 
+    /** Payee and category of every categorised entry, for learning which payee gets which category. */
+    @Query("SELECT type, party, category FROM transactions WHERE party != '' AND category != ''")
+    suspend fun partyCategories(): List<PartyCategory>
+
     @Upsert
     suspend fun upsert(transaction: Transaction): Long
 

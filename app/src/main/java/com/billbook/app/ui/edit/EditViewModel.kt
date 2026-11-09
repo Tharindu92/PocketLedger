@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.billbook.app.BillBookApp
+import com.billbook.app.data.CategoryGuesser
 import com.billbook.app.data.Profile
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
@@ -185,7 +186,11 @@ class EditViewModel(
         viewModelScope.launch {
             try {
                 val result = scanner.scan(path, app.settings.currency)
-                applyScan(result, overwrite, known = dao.knownParties())
+                applyScan(
+                    result, overwrite,
+                    known = dao.knownParties(),
+                    history = CategoryGuesser.learn(dao.partyCategories()),
+                )
             } catch (e: Exception) {
                 scanMessage = "Couldn't read the photo (${e.message ?: "unknown error"}). Please enter details manually."
             } finally {
@@ -194,7 +199,12 @@ class EditViewModel(
         }
     }
 
-    private fun applyScan(result: ReceiptScanner.Result, overwrite: Boolean, known: List<String>) {
+    private fun applyScan(
+        result: ReceiptScanner.Result,
+        overwrite: Boolean,
+        known: List<String>,
+        history: Map<Pair<TxType, String>, String>,
+    ) {
         val p = result.parsed
         // A business saved before wins when the scan resembles it: the user's own spelling is
         // right even where OCR misread a word or split the name.
@@ -209,7 +219,11 @@ class EditViewModel(
             tax = pick(f.tax, p.taxCents?.let(Money::toInput)),
             party = pick(f.party, merchant),
             billNumber = pick(f.billNumber, p.billNumber),
-            category = pick(f.category, p.category),
+            // The category used for this business before beats the keyword guess.
+            category = pick(
+                f.category,
+                merchant?.let(CategoryGuesser::payeeKey)?.let { history[f.type to it] } ?: p.category,
+            ),
             paymentMethod = pick(f.paymentMethod, p.paymentMethod),
             date = if (p.date != null && (overwrite || !dateTouched)) p.date else f.date,
             currency = if (p.currency != null && (overwrite || !currencyTouched)) p.currency else f.currency,

@@ -2,19 +2,18 @@ package com.billbook.app.importer
 
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
-import com.billbook.app.ocr.ReceiptParser
+import com.billbook.app.data.CategoryGuesser
 import kotlin.math.abs
 
 /** Turns statement lines into entries and spots bookings that are already recorded. Pure Kotlin. */
 object ImportMapping {
 
-    /** Category suggested from the booking text; only expenses are guessed. */
-    fun guessCategory(line: StatementLine, type: TxType): String =
-        if (type == TxType.EXPENSE) {
-            ReceiptParser.guessCategory(listOf(line.party, line.reference, line.kind).filter { it.isNotBlank() }).orEmpty()
-        } else {
-            ""
-        }
+    /** Category suggested from the payee and booking text; [history] comes from [CategoryGuesser.learn]. */
+    fun guessCategory(
+        line: StatementLine,
+        type: TxType,
+        history: Map<Pair<TxType, String>, String> = emptyMap(),
+    ): String = CategoryGuesser.guess(type, listOf(line.party, line.reference, line.kind), history)
 
     /** [category] null means use the guess. */
     fun toTransaction(line: StatementLine, type: TxType, profileId: Long, category: String? = null): Transaction {
