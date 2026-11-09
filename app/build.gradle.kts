@@ -65,7 +65,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     // On-device OCR (bundled model, works offline)
-    implementation("com.google.mlkit:text-recognition:16.0.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
