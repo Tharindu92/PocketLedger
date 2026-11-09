@@ -184,6 +184,26 @@ class StatementImportTest {
         assertEquals(-176919L, line.amountCents)
     }
 
+    /** N26 prints the foreign amount on a line of its own under a card payment. */
+    @Test
+    fun n26ForeignAmountLineBelongsToTheBookingAbove() {
+        val rows = listOf(
+            "Beschreibung Verbuchungsdatum Betrag",
+            "BAZAAR ISTANBUL 06.10.2026 -13,14€",
+            "Mastercard • Shopping",
+            "Wertstellung 06.10.2026",
+            "Ursprungsbetrag 720.00 TRY | Wechselkurs 0.01825",
+            "HOTEL COLOMBO 02.10.2026 -40,50€",
+            "Ursprungsbetrag 15000.00 LKR | Wechselkurs 0.00270",
+            "Ausgehende Transaktionen -53,64€",
+        )
+        val r = BankPdfParser.parse(rows, "EUR", today = LocalDate.of(2026, 11, 9))
+        assertEquals(listOf(-1314L, -4050L), r.lines.map { it.amountCents })
+        assertEquals(listOf(72000L, 1500000L), r.lines.map { it.originalAmountCents })
+        assertEquals(listOf("TRY", "LKR"), r.lines.map { it.originalCurrency })
+        assertFalse(r.lines.any { it.uncertain })
+    }
+
     /** Text rows of a summary box: labels on one line, their values on the next. */
     @Test
     fun pdfSummaryBoxesAreNotBookings() {

@@ -33,7 +33,8 @@ object BankPdfParser {
     private val LEADING_SHORT_DATES = Regex("""^\s*(\d{1,2})\.(\d{1,2})\.?(?=\s)(?:\s+(\d{1,2})\.(\d{1,2})\.?(?=\s))?""")
     private val SKIP = Regex(
         """\b(balance|saldo|kontostand|opening|closing|übertrag|carried forward|brought forward|total|summe|""" +
-            """zwischensumme|page|seite|iban|bic|statement|kontoauszug|account number|kontonummer)\b""",
+            """zwischensumme|page|seite|iban|bic|statement|kontoauszug|account number|kontonummer|""" +
+            """ausgehende transaktionen|eingehende transaktionen|outgoing transactions|incoming transactions)\b""",
         RegexOption.IGNORE_CASE,
     )
     private val DEBIT_WORD = Regex("""\b(S|Soll|Dr|Debit|Lastschrift|Belastung|Kartenzahlung|Card payment)\b""")
@@ -51,6 +52,14 @@ object BankPdfParser {
         RegexOption.IGNORE_CASE,
     )
     private val FOREIGN_CODE = Regex("""\b(${ReceiptParser.ISO_CODES.joinToString("|")})\b""")
+    /**
+     * Foreign-currency details printed under a card payment, e.g. N26's
+     * "Ursprungsbetrag 720.00 TRY | Wechselkurs 0.01825": part of the booking above, not a booking.
+     */
+    private val ORIGINAL_DETAILS = Regex(
+        """(?:ursprungsbetrag|originalbetrag|original amount|betrag in fremdwährung)\s*:?\s*([-+−]?[\d.,]+)\s*([A-Z]{3})\b""",
+        RegexOption.IGNORE_CASE,
+    )
 
     // ------------------------------------------------------------ column headers
 
@@ -148,6 +157,16 @@ object BankPdfParser {
             val cellStarts = pdfRow.cells.runningFold(0) { at, c -> at + c.text.trim().length + 3 }
             fun cellAt(offset: Int): PdfCell =
                 pdfRow.cells[(cellStarts.indexOfLast { it <= offset }).coerceIn(0, pdfRow.cells.lastIndex)]
+
+            ORIGINAL_DETAILS.find(row)?.let { m ->
+                val code = m.groupValues[2].uppercase()
+                val cents = StatementValues.parseAmount(m.groupValues[1])?.let { abs(it) }
+                val previous = lines.lastOrNull()
+                if (previous != null && cents != null && cents > 0 && code != previous.currency) {
+                    lines[lines.lastIndex] = previous.copy(originalAmountCents = cents, originalCurrency = code)
+                }
+                return@forEachIndexed
+            }
 
             // Dates are taken out first so "18.09" or "28.10.2026" is never read as an amount.
             val dateRanges = mutableListOf<IntRange>()
