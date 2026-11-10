@@ -18,6 +18,7 @@ import com.billbook.app.ui.home.HomeScreen
 import com.billbook.app.ui.importer.ImportScreen
 import com.billbook.app.ui.insights.InsightsScreen
 import com.billbook.app.ui.rules.RulesScreen
+import com.billbook.app.ui.categories.CategoriesScreen
 import com.billbook.app.ui.statement.StatementScreen
 
 @Composable
@@ -40,6 +41,7 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 onBank = { nav.navigate("bank") },
                 onProfiles = { nav.navigate("profiles") },
                 onRules = { nav.navigate("rules") },
+                onCategories = { nav.navigate("categories") },
                 onImportStatement = { uri -> nav.navigate("import?uri=${Uri.encode(uri.toString())}") },
             )
         }
@@ -70,6 +72,9 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 detectedId = args?.getLong("detected") ?: 0L,
                 onDone = { nav.popBackStack() },
             )
+        }
+        composable("categories") {
+            CategoriesScreen(onBack = { nav.popBackStack() })
         }
         composable("rules") {
             RulesScreen(onBack = { nav.popBackStack() })

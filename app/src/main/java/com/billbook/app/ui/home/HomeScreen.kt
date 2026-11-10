@@ -102,6 +102,7 @@ import com.billbook.app.BillBookApp
 import com.billbook.app.data.AppSettings
 import com.billbook.app.data.Categories
 import com.billbook.app.ui.components.SuggestField
+import com.billbook.app.ui.components.NewCategoryChip
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
 import com.billbook.app.data.date
@@ -130,6 +131,7 @@ fun HomeScreen(
     onBank: () -> Unit,
     onProfiles: () -> Unit,
     onRules: () -> Unit = {},
+    onCategories: () -> Unit = {},
     onImportStatement: (Uri) -> Unit = {},
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
@@ -424,6 +426,10 @@ fun HomeScreen(
                                     label = { Text(name) },
                                 )
                             }
+                            NewCategoryChip(type, categories[type].orEmpty()) { name ->
+                                if (types.size == 1) pickCategory = false
+                                vm.setCategory(type, name) { n -> announce("${entries(n)} set to $name") }
+                            }
                         }
                     }
                 }
@@ -486,7 +492,11 @@ fun HomeScreen(
     }
 
     if (showSettings) {
-        SettingsDialog(settings, onRules = { showSettings = false; onRules() }) { showSettings = false }
+        SettingsDialog(
+            settings,
+            onRules = { showSettings = false; onRules() },
+            onCategories = { showSettings = false; onCategories() },
+        ) { showSettings = false }
     }
 }
 
@@ -645,7 +655,7 @@ private fun SheetOption(icon: ImageVector, title: String, subtitle: String?, onC
 }
 
 @Composable
-private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onDismiss: () -> Unit) {
+private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategories: () -> Unit, onDismiss: () -> Unit) {
     var currency by remember { mutableStateOf(settings.currency) }
     var business by remember { mutableStateOf(settings.businessName) }
     var onlineRates by remember { mutableStateOf(settings.onlineRates == true) }
@@ -682,6 +692,7 @@ private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onDismiss
                     }
                     Switch(checked = onlineRates, onCheckedChange = { onlineRates = it })
                 }
+                TextButton(onClick = onCategories) { Text("Categories: add, rename, hide") }
                 TextButton(onClick = onRules) { Text("Category rules you saved") }
             }
         },

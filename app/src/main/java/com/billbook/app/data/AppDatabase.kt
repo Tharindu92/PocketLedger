@@ -9,14 +9,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Transaction::class, DetectedTransaction::class, Profile::class, ExchangeRate::class, CategoryRule::class],
-    version = 6,
+    entities = [Transaction::class, DetectedTransaction::class, Profile::class, ExchangeRate::class, CategoryRule::class, CategorySetting::class],
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,6 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun profiles(): ProfileDao
     abstract fun rates(): ExchangeRateDao
     abstract fun categoryRules(): CategoryRuleDao
+    abstract fun categorySettings(): CategorySettingDao
 
     companion object {
         /** [defaultCurrency] is used to fill in the currency of entries created before v2. */

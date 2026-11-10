@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.billbook.app.BillBookApp
+import com.billbook.app.data.CategoryCatalog
 import com.billbook.app.data.CategoryGuesser
 import com.billbook.app.data.CategoryRule
 import com.billbook.app.ui.components.RuleOffer
@@ -138,8 +139,8 @@ class EditViewModel(
     val profiles: StateFlow<List<Profile>> = app.database.profiles().observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val usedCategories: StateFlow<List<TypeCategory>> = dao.observeUsedCategories()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val categories: StateFlow<Map<TxType, List<String>>> = CategoryCatalog.observe(app.database)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
         if (id > 0) {

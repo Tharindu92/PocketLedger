@@ -55,6 +55,13 @@ interface TransactionDao {
     @Query("SELECT type, party, category FROM transactions WHERE party != '' AND category != ''")
     suspend fun partyCategories(): List<PartyCategory>
 
+    @Query("SELECT type, category, COUNT(*) AS count FROM transactions WHERE category != '' GROUP BY type, category")
+    fun observeCategoryCounts(): Flow<List<CategoryCount>>
+
+    /** Moves every entry of [type] from category [from] to [to]; returns how many changed. */
+    @Query("UPDATE transactions SET category = :to WHERE type = :type AND category = :from")
+    suspend fun renameCategory(type: TxType, from: String, to: String): Int
+
     @Upsert
     suspend fun upsert(transaction: Transaction): Long
 

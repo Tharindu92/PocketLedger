@@ -86,15 +86,14 @@ import kotlinx.coroutines.withContext
 fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0, onDone: () -> Unit) {
     val vm: EditViewModel = viewModel(factory = EditViewModel.factory(id, type, imagePath, detectedId))
     val form = vm.form
-    val used by vm.usedCategories.collectAsStateWithLifecycle()
+    val categories by vm.categories.collectAsStateWithLifecycle()
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
     var showImage by remember { mutableStateOf(false) }
     var showText by remember { mutableStateOf(false) }
 
     val income = form.type == TxType.INCOME
-    val categoryOptions = (Categories.defaultsFor(form.type) +
-        used.filter { it.type == form.type }.map { it.category }).distinct()
+    val categoryOptions = categories[form.type].orEmpty()
     val title = when {
         vm.isExisting -> "Edit entry"
         income -> "New income"

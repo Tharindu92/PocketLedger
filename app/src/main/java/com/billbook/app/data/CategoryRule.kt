@@ -29,6 +29,9 @@ interface CategoryRuleDao {
     @Upsert
     suspend fun upsert(rule: CategoryRule)
 
+    @Query("UPDATE category_rules SET category = :to WHERE type = :type AND category = :from")
+    suspend fun renameCategory(type: TxType, from: String, to: String)
+
     @Query("DELETE FROM category_rules WHERE keyword = :keyword AND type = :type")
     suspend fun delete(keyword: String, type: TxType)
 }

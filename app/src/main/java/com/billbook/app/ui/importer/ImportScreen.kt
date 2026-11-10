@@ -23,6 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Warning
 import com.billbook.app.ui.components.RememberRuleCard
+import com.billbook.app.ui.components.NewCategoryChip
+import com.billbook.app.ui.components.NewCategoryDialog
+import androidx.compose.material.icons.filled.Add
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -318,7 +321,7 @@ private fun ImportRow(
             ) {
                 if (profiles.size > 1) ProfilePicker(item.profileId, profiles, onProfile)
                 AssistChip(onClick = onType, label = { Text(if (income) "Income" else "Expense") })
-                CategoryPicker(item.category, categories, onCategory)
+                CategoryPicker(item.category, item.type, categories, onCategory)
                 if (item.duplicate) {
                     Text("Already recorded?", style = MaterialTheme.typography.labelSmall, color = MoneyColors.expense)
                 }
@@ -383,6 +386,10 @@ private fun BulkCategoryDialog(
                                 label = { Text(name) },
                             )
                         }
+                        NewCategoryChip(type, categories[type].orEmpty()) { name ->
+                            onPick(type, name)
+                            if (types.size == 1) onDismiss()
+                        }
                     }
                 }
             }
@@ -392,8 +399,10 @@ private fun BulkCategoryDialog(
 }
 
 @Composable
-private fun CategoryPicker(selected: String, categories: List<String>, onPick: (String) -> Unit) {
+private fun CategoryPicker(selected: String, type: TxType, categories: List<String>, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    if (creating) NewCategoryDialog(type, categories, onCreated = onPick, onDismiss = { creating = false })
     Box {
         AssistChip(
             onClick = { open = true },
@@ -417,6 +426,12 @@ private fun CategoryPicker(selected: String, categories: List<String>, onPick: (
                     onClick = { open = false; onPick(name) },
                 )
             }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("New category…") },
+                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                onClick = { open = false; creating = true },
+            )
         }
     }
 }

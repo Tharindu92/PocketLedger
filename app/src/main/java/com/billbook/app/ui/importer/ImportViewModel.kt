@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.billbook.app.data.Categories
+import com.billbook.app.data.CategoryCatalog
 import com.billbook.app.data.CategoryGuesser
 import com.billbook.app.data.CategoryRule
 import com.billbook.app.ui.components.RuleOffer
@@ -187,12 +188,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
     }
 
     /** Category names per type: built-in ones, then custom ones used before. */
-    val categories: StateFlow<Map<TxType, List<String>>> = app.database.transactions().observeUsedCategories()
-        .map { used ->
-            TxType.entries.associateWith { type ->
-                (Categories.defaultsFor(type) + used.filter { it.type == type }.map { it.category }).distinct()
-            }
-        }
+    val categories: StateFlow<Map<TxType, List<String>>> = CategoryCatalog.observe(app.database)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun selectAll(selected: Boolean) {

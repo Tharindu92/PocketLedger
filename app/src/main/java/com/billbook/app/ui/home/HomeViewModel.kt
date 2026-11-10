@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import com.billbook.app.data.Categories
+import com.billbook.app.data.CategoryCatalog
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.YearMonth
@@ -107,12 +108,7 @@ class HomeViewModel(private val app: BillBookApp) : ViewModel() {
     private fun selectedItems(): List<Transaction> = state.value.items.filter { it.id in _selected.value }
 
     /** Category names to offer per type: the built-in ones, then any custom ones used before. */
-    val categories: StateFlow<Map<TxType, List<String>>> = dao.observeUsedCategories()
-        .map { used ->
-            TxType.entries.associateWith { type ->
-                (Categories.defaultsFor(type) + used.filter { it.type == type }.map { it.category }).distinct()
-            }
-        }
+    val categories: StateFlow<Map<TxType, List<String>>> = CategoryCatalog.observe(app.database)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Sets [category] on the ticked entries of [type]; ticked entries of the other type keep theirs. */
