@@ -6,6 +6,10 @@ object Categories {
 
     val expense = listOf(
         "Groceries",
+        "Drugstore & Personal Care",
+        "Household Supplies",
+        "Clothing",
+        "Electronics",
         "Dining",
         "Fuel",
         "Transport",
@@ -21,6 +25,8 @@ object Categories {
         "Professional Services",
         "Marketing",
         "Medical",
+        "Insurance & Taxes",
+        "Education",
         "Bank Charges",
         "Government & Fees",
         "Family Support",

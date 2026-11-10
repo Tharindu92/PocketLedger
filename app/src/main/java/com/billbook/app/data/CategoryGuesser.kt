@@ -34,11 +34,34 @@ object CategoryGuesser {
             "oper|opera|philharmonie|musical|festival|museum|zoo|tierpark|bowling|escape room|freizeitpark",
         "Gifts" to "gift|gifts|geschenk|geschenke|present|presents|blumen|florist|flowers|fleurop|" +
             "geburtstag|birthday|wedding gift|hochzeit",
+        // Clothing before insurance so "TK Maxx" is never read as the TK health insurer.
+        "Clothing" to "clothing|clothes|kleidung|fashion|schuhe|shoes|h&m|c&a|zara|primark|uniqlo|zalando|" +
+            "about you|asos|tk maxx|peek & cloppenburg|p&c|new yorker|deichmann|snipes|bershka|pull&bear|" +
+            "esprit|s\\.oliver|jack & jones|vero moda|nike|adidas|puma|odlo|jack wolfskin|" +
+            "odel|nolimit|cool planet|fashion bug",
+        "Insurance & Taxes" to "versicherung|versicherungen|insurance|allianz|huk|huk-coburg|huk24|axa|ergo|" +
+            "generali|devk|r\\+v|signal iduna|debeka|cosmos direkt|check24|feather|getsafe|wgv|" +
+            "techniker krankenkasse|aok|barmer|dak|ikk|krankenkasse|krankenversicherung|haftpflicht|hausrat|" +
+            "rentenversicherung|finanzamt|kfz-steuer|einkommensteuer|lohnsteuer|gewerbesteuer|grundsteuer|" +
+            "steuerzahlung|steuernachzahlung|income tax|tax office|tax payment|" +
+            "inland revenue|ird|ceylinco|janashakthi|softlogic life|aia",
+        "Drugstore & Personal Care" to "dm|dm-drogerie|dm drogerie|rossmann|müller drogerie|budni|douglas|" +
+            "drogerie|drugstore|kosmetik|cosmetics|parfümerie|friseur|barber|hair salon|salon|nagelstudio|" +
+            "body shop|lush|sephora",
+        "Electronics" to "electronics|elektronik|mediamarkt|media markt|saturn|apple store|cyberport|" +
+            "notebooksbilliger|alternate|conrad|euronics|gravis|samsung|xiaomi|singer|abans|softlogic|" +
+            "damro|dialog store",
+        "Household Supplies" to "kik|woolworth|woolworths|tedi|action|nanu-nana|thomas philipps|pepco|" +
+            "søstrene grene|sostrene grene|ikea|jysk|haushalt|haushaltswaren|household|euroshop|1-euro|" +
+            "mäc geiz|maec geiz|hema|rusta",
+        "Education" to "education|school|schule|university|universität|universitaet|hochschule|uni|course|" +
+            "courses|udemy|coursera|linkedin learning|volkshochschule|vhs|goethe|sprachschule|tuition|" +
+            "studiengebühr|semesterbeitrag|thalia|hugendubel|bücher|buecher|books|exam|prüfung",
         "Fuel" to "fuel|petrol|diesel|filling station|ceypetco|lioc|octane|tankstelle|aral|shell|esso|jet|agip|" +
             "total ?energies|star tankstelle|orlen",
         "Groceries" to "supermarket|super|keells|cargills|food ?city|arpico|glomark|grocery|groceries|spar|lidl|aldi|" +
             "walmart|tesco|rewe|edeka|kaufland|netto|penny|norma|globus|tegut|alnatura|denns|bio company|" +
-            "lebensmittel|carrefour|dm|dm-drogerie|dm drogerie|rossmann|drogerie|getränke|flaschenpost|picnic|knuspr",
+            "lebensmittel|carrefour|getränke|flaschenpost|picnic|knuspr",
         "Dining" to "restaurant|cafe|café|coffee|pizza|pizzeria|burger|kfc|mcdonald'?s|bakery|hotel|dine|kitchen|bistro|" +
             "lieferando|wolt|uber ?eats|deliveroo|starbucks|subway|burger king|imbiss|döner|doener|gaststätte|" +
             "ristorante|trattoria|sushi|bäckerei|baeckerei|backshop|kantine|mensa",
@@ -56,8 +79,8 @@ object CategoryGuesser {
             "dropbox|icloud|disney|youtube|amazon prime|prime video|jetbrains|notion|canva|abo",
         "Office Supplies" to "stationery|stationary|bookshop|printing|office supplies|toner|staples|mcpaper|bürobedarf",
         "Government & Fees" to "department|ministry|government|municipal|secretariat|registration of persons|" +
-            "passport|immigration|motor traffic|stamp duty|finanzamt|bürgeramt|buergeramt|ausländerbehörde|" +
-            "landesamt|bezirksamt|bundeskasse|landeshauptkasse|rundfunk|rundfunkbeitrag|bussgeld|bußgeld|kfz-steuer",
+            "passport|immigration|motor traffic|stamp duty|bürgeramt|buergeramt|ausländerbehörde|" +
+            "landesamt|bezirksamt|bundeskasse|landeshauptkasse|rundfunk|rundfunkbeitrag|bussgeld|bußgeld",
         "Rent" to "miete|kaltmiete|warmmiete|rent|hausverwaltung|wohnungsbau|wohnungsgesellschaft|vonovia|" +
             "deutsche wohnen|gewobag|degewo|howoge",
         "Repairs & Maintenance" to "repair|repairs|reparatur|werkstatt|handwerker|baumarkt|obi|bauhaus|hornbach|toom|" +
