@@ -24,6 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.Card
@@ -103,6 +109,8 @@ fun InsightsScreen(onBack: () -> Unit, vm: InsightsViewModel = viewModel(factory
                     onPeriod = vm::setPeriod,
                     onProfile = vm::setProfile,
                     onCurrency = vm::setCurrency,
+                    onMonths = vm::setMonths,
+                    onShift = vm::shift,
                 )
             }
             if (data == null || data.isEmpty) {
@@ -115,7 +123,7 @@ fun InsightsScreen(onBack: () -> Unit, vm: InsightsViewModel = viewModel(factory
                 }
                 return@LazyColumn
             }
-            item { Summary(data, s.filter.period) }
+            item { Summary(data, s.comparedTo) }
             if (data.unconverted.isNotEmpty()) {
                 item {
                     Unconverted(data, vm.canDownloadRates, rateMessage, vm::downloadRates)
@@ -142,11 +150,26 @@ private fun Filters(
     onPeriod: (Period) -> Unit,
     onProfile: (Long?) -> Unit,
     onCurrency: (String) -> Unit,
+    onMonths: (YearMonth, YearMonth) -> Unit,
+    onShift: (Int) -> Unit,
 ) {
+    var picking by remember { mutableStateOf(false) }
+    if (picking) {
+        MonthRangeDialog(
+            initialFrom = s.from,
+            initialTo = s.to,
+            onPick = { a, b -> picking = false; onMonths(a, b) },
+            onDismiss = { picking = false },
+        )
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         ChipRow {
             Period.entries.forEach { p ->
-                FilterChip(selected = s.filter.period == p, onClick = { onPeriod(p) }, label = { Text(p.label) })
+                FilterChip(
+                    selected = s.filter.period == p,
+                    onClick = { if (p == Period.CUSTOM) picking = true else onPeriod(p) },
+                    label = { Text(p.label) },
+                )
             }
         }
         if (profiles.size > 1) {
@@ -165,12 +188,104 @@ private fun Filters(
                 }
             }
         }
-        Text(
-            if (s.from == s.to) s.from.format(MonthYear) else "${s.from.format(MonthYear)} – ${s.to.format(MonthYear)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val stepping = s.filter.period != Period.ALL_TIME
+            if (stepping) {
+                IconButton(onClick = { onShift(-1) }) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Earlier months")
+                }
+            }
+            Text(
+                rangeLabel(s.from, s.to),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f).clickable { picking = true },
+                textAlign = if (stepping) TextAlign.Center else TextAlign.Start,
+            )
+            if (stepping) {
+                IconButton(onClick = { onShift(1) }, enabled = s.to < YearMonth.now()) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Later months")
+                }
+            }
+        }
     }
+}
+
+private fun rangeLabel(from: YearMonth, to: YearMonth) = when {
+    from == to -> from.format(FullMonthYear)
+    from.year == to.year -> "${from.format(ShortMonth)} – ${to.format(MonthYear)}"
+    else -> "${from.format(MonthYear)} – ${to.format(MonthYear)}"
+}
+
+private val FullMonthYear = DateTimeFormatter.ofPattern("MMMM yyyy")
+
+/**
+ * Month grid for one year at a time. The first tap picks a single month; a second tap on a later
+ * month extends it into a range (tap an earlier month to start again).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MonthRangeDialog(
+    initialFrom: YearMonth,
+    initialTo: YearMonth,
+    onPick: (YearMonth, YearMonth) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var from by remember { mutableStateOf(initialFrom) }
+    var to by remember { mutableStateOf(initialTo) }
+    var year by remember { mutableStateOf(initialTo.year) }
+    // After a range is shown, the next tap starts a new selection.
+    var extending by remember { mutableStateOf(initialFrom == initialTo) }
+    val now = YearMonth.now()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose months") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Tap a month, then a later month for a range.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { year-- }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous year")
+                    }
+                    Text("$year", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f))
+                    IconButton(onClick = { year++ }, enabled = year < now.year) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next year")
+                    }
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    maxItemsInEachRow = 4,
+                ) {
+                    for (m in 1..12) {
+                        val month = YearMonth.of(year, m)
+                        FilterChip(
+                            selected = month in from..to,
+                            enabled = month <= now,
+                            onClick = {
+                                if (extending && month > from) {
+                                    to = month
+                                    extending = false
+                                } else {
+                                    from = month
+                                    to = month
+                                    extending = true
+                                }
+                            },
+                            label = { Text(month.format(ShortMonth)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                Text(rangeLabel(from, to), style = MaterialTheme.typography.titleSmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onPick(from, to) }) { Text("Show") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -197,12 +312,7 @@ private fun InsightCard(title: String, content: @Composable ColumnScope.() -> Un
 }
 
 @Composable
-private fun Summary(d: InsightsData, period: Period) {
-    val comparedTo = when {
-        period == Period.ALL_TIME -> ""
-        d.months.size == 1 -> "last month"
-        else -> "the ${d.months.size} months before"
-    }
+private fun Summary(d: InsightsData, comparedTo: String?) {
     InsightCard("Overview") {
         Row(Modifier.fillMaxWidth()) {
             Figure("Income", d.income, d.currency, MoneyColors.income, Insights.change(d.income, d.previousIncome), false, Modifier.weight(1f))
@@ -230,7 +340,7 @@ private fun Summary(d: InsightsData, period: Period) {
             }.trim(),
             style = MaterialTheme.typography.bodyMedium,
         )
-        if (comparedTo.isNotEmpty() && (d.previousIncome ?: 0) + (d.previousExpense ?: 0) > 0) {
+        if (comparedTo != null && (d.previousIncome ?: 0) + (d.previousExpense ?: 0) > 0) {
             Text("▲▼ compared with $comparedTo", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

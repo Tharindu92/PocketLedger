@@ -34,6 +34,8 @@ enum class Period(val label: String) {
     THIS_YEAR("This year"),
     TWELVE_MONTHS("12 months"),
     ALL_TIME("All time"),
+    /** Months the user picked, or reached with the arrows. */
+    CUSTOM("Choose…"),
 }
 
 /** Which entries are analysed. [profileId] null means all profiles together. */
@@ -41,6 +43,11 @@ data class InsightsFilter(
     val period: Period = Period.SIX_MONTHS,
     val profileId: Long? = null,
     val currency: String = "",
+    /** First and last month for [Period.CUSTOM]. */
+    val customFrom: YearMonth? = null,
+    val customTo: YearMonth? = null,
+    /** Steps taken with the arrows: years for [Period.THIS_YEAR], months otherwise; 0 = up to now. */
+    val offset: Int = 0,
 )
 
 data class InsightsState(
@@ -50,6 +57,8 @@ data class InsightsState(
     val data: InsightsData?,
     /** Currencies used by entries in the period, analysis currency first. */
     val currencies: List<String>,
+    /** What the ▲▼ figures compare with, e.g. "the 3 months before" or "Jan – Nov 2025"; null for all time. */
+    val comparedTo: String?,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -65,7 +74,29 @@ class InsightsViewModel(private val app: BillBookApp) : ViewModel() {
         InsightsFilter(profileId = app.settings.activeProfileId.value, currency = app.settings.currency)
     )
 
-    fun setPeriod(p: Period) { filter.value = filter.value.copy(period = p) }
+    fun setPeriod(p: Period) { filter.value = filter.value.copy(period = p, offset = 0) }
+
+    /** [from]..[to] chosen in the month picker; one month when they are equal. */
+    fun setMonths(from: YearMonth, to: YearMonth) {
+        val (a, b) = if (from <= to) from to to else to to from
+        filter.value = filter.value.copy(period = Period.CUSTOM, customFrom = a, customTo = b)
+    }
+
+    /**
+     * Arrows: "This year" moves a whole year (Jan – Dec 2025 ← Jan – Nov 2026); every other period
+     * slides by one month and keeps its length (Aug – Oct ← Sep – Nov).
+     */
+    fun shift(direction: Int) {
+        val f = filter.value
+        filter.value = when (f.period) {
+            Period.ALL_TIME -> f
+            Period.CUSTOM -> f.copy(
+                customFrom = f.customFrom?.plusMonths(direction.toLong()),
+                customTo = f.customTo?.plusMonths(direction.toLong()),
+            )
+            else -> f.copy(offset = minOf(0, f.offset + direction))
+        }
+    }
     fun setProfile(id: Long?) { filter.value = filter.value.copy(profileId = id) }
     fun setCurrency(code: String) { filter.value = filter.value.copy(currency = code) }
 
@@ -74,25 +105,61 @@ class InsightsViewModel(private val app: BillBookApp) : ViewModel() {
         else dao.observeBetween(profileId, from.toEpochDay(), to.toEpochDay())
 
     /** First and last month of the period, and the same-length period before (null for all time). */
-    private data class Range(val from: YearMonth, val to: YearMonth, val previous: Pair<YearMonth, YearMonth>?)
+    private data class Range(
+        val from: YearMonth,
+        val to: YearMonth,
+        val previous: Pair<YearMonth, YearMonth>?,
+        val comparedTo: String?,
+    )
 
-    private fun range(period: Period, firstDay: Long?): Range {
+    /** The same number of months just before [from]..[to]. */
+    private fun before(from: YearMonth, to: YearMonth): Pair<Pair<YearMonth, YearMonth>, String> {
+        val length = monthsBetween(from, to)
+        return (from.minusMonths(length) to from.minusMonths(1)) to
+            if (length == 1L) "the month before" else "the $length months before"
+    }
+
+    private fun monthsBetween(from: YearMonth, to: YearMonth) =
+        (to.year - from.year) * 12L + (to.monthValue - from.monthValue) + 1
+
+    private fun range(f: InsightsFilter, firstDay: Long?): Range {
+        val period = f.period
         val now = YearMonth.now()
-        val from = when (period) {
-            Period.THIS_MONTH -> now
-            Period.THREE_MONTHS -> now.minusMonths(2)
-            Period.SIX_MONTHS -> now.minusMonths(5)
-            Period.THIS_YEAR -> YearMonth.of(now.year, 1)
-            Period.TWELVE_MONTHS -> now.minusMonths(11)
-            Period.ALL_TIME -> firstDay?.let { YearMonth.from(LocalDate.ofEpochDay(it)) }?.coerceAtMost(now) ?: now
+        fun rolling(months: Long): Range {
+            val to = now.plusMonths(f.offset.toLong())
+            val from = to.minusMonths(months - 1)
+            val (prev, label) = before(from, to)
+            return Range(from, to, prev, label)
         }
-        val length = (now.year - from.year) * 12L + (now.monthValue - from.monthValue) + 1
-        val previous = if (period == Period.ALL_TIME) null else from.minusMonths(length) to from.minusMonths(1)
-        return Range(from, now, previous)
+        return when (period) {
+            Period.CUSTOM -> {
+                val from = f.customFrom ?: now
+                val to = f.customTo ?: now
+                val (prev, label) = before(from, to)
+                Range(from, to, prev, label)
+            }
+            Period.THIS_MONTH -> rolling(1)
+            Period.THREE_MONTHS -> rolling(3)
+            Period.SIX_MONTHS -> rolling(6)
+            Period.TWELVE_MONTHS -> rolling(12)
+            Period.THIS_YEAR -> {
+                // A past year is shown in full; the current year up to this month.
+                val year = now.year + f.offset
+                val from = YearMonth.of(year, 1)
+                val to = if (year == now.year) now else YearMonth.of(year, 12)
+                // Compared with the same months a year earlier, e.g. Jan – Nov 2026 with Jan – Nov 2025.
+                val prev = from.minusYears(1) to to.minusYears(1)
+                Range(from, to, prev, if (to.monthValue == 12) "${year - 1}" else "the same months of ${year - 1}")
+            }
+            Period.ALL_TIME -> {
+                val from = firstDay?.let { YearMonth.from(LocalDate.ofEpochDay(it)) }?.coerceAtMost(now) ?: now
+                Range(from, now, null, null)
+            }
+        }
     }
 
     val state: StateFlow<InsightsState?> = filter.flatMapLatest { f ->
-        dao.observeFirstDay(f.profileId).map { first -> f to range(f.period, first) }
+        dao.observeFirstDay(f.profileId).map { first -> f to range(f, first) }
     }.flatMapLatest { (f, r) ->
         val current = entries(f.profileId, r.from.atDay(1), r.to.atEndOfMonth())
         val previous = r.previous?.let { (a, b) -> entries(f.profileId, a.atDay(1), b.atEndOfMonth()) } ?: flowOf(null)
@@ -105,6 +172,7 @@ class InsightsViewModel(private val app: BillBookApp) : ViewModel() {
                 data = Insights.build(r.from, r.to, items, before, f.currency, default, rates),
                 currencies = (listOf(f.currency, default) + items.map { it.currency.ifBlank { default } })
                     .distinct(),
+                comparedTo = r.comparedTo,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
