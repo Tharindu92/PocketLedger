@@ -27,6 +27,19 @@ class CategoryGuesserTest {
         assertEquals("Government & Fees", expense("Rundfunk ARD ZDF DRADIO"))
         assertEquals("Bank Charges", expense("Kontoführungsentgelt"))
         assertEquals("Marketing", expense("Google Ads"))
+        assertEquals("Investments", expense("Trade Republic Bank GmbH"))
+        assertEquals("Investments", expense("Scalable Capital", "Sparplan Gebühr"))
+        assertEquals("Investments", expense("Equities Settlement account"))
+        assertEquals("Family Support", expense("Remitly", "Transfer to Sri Lanka"))
+        assertEquals("Family Support", expense("Max Mustermann", "for Amma"))
+        assertEquals("Sports & Fitness", expense("Urban Sports GmbH"))
+        assertEquals("Sports & Fitness", expense("McFIT Berlin"))
+        assertEquals("Sports & Fitness", expense("DECATHLON"))
+        assertEquals("Entertainment", expense("CinemaxX Potsdamer Platz"))
+        assertEquals("Entertainment", expense("EVENTIM", "Konzert Tickets"))
+        assertEquals("Gifts", expense("Blumen Schmidt"))
+        // "sport" inside "Transport" doesn't count.
+        assertEquals("Transport", expense("BVG Transport"))
     }
 
     @Test
@@ -47,6 +60,8 @@ class CategoryGuesserTest {
         // Money back from a shop or the railway is a refund.
         assertEquals("Refunds", income("DB Vertrieb GmbH"))
         assertEquals("", income("Anna Maria Beispiel"))
+        // Money from a broker could be a sale or a payout, so no guess (and never "Refunds").
+        assertEquals("", income("Equities Settlement account"))
     }
 
     @Test
@@ -62,8 +77,8 @@ class CategoryGuesserTest {
         assertEquals("Dividends", CategoryGuesser.guess(TxType.INCOME, listOf("Equities Settlement account"), history))
         // Most used choice, matched despite branch numbers and legal form.
         assertEquals("Dining", CategoryGuesser.guess(TxType.EXPENSE, listOf("REWE Markt GmbH-Zw 1234"), history))
-        // Only for the same type.
-        assertEquals("", CategoryGuesser.guess(TxType.EXPENSE, listOf("Equities Settlement account"), history))
+        // Only for the same type: money sent there is an investment, not "Dividends".
+        assertEquals("Investments", CategoryGuesser.guess(TxType.EXPENSE, listOf("Equities Settlement account"), history))
     }
 
     @Test

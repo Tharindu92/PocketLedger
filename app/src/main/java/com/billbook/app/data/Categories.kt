@@ -1,12 +1,18 @@
 package com.billbook.app.data
 
 object Categories {
+    /** Money moved into stocks, ETFs or a savings plan: kept, not spent, so Insights counts it as saved. */
+    const val INVESTMENTS = "Investments"
+
     val expense = listOf(
         "Groceries",
         "Dining",
         "Fuel",
         "Transport",
         "Travel",
+        "Sports & Fitness",
+        "Entertainment",
+        "Gifts",
         "Utilities",
         "Rent",
         "Office Supplies",
@@ -17,6 +23,8 @@ object Categories {
         "Medical",
         "Bank Charges",
         "Government & Fees",
+        "Family Support",
+        INVESTMENTS,
         "Other",
     )
 

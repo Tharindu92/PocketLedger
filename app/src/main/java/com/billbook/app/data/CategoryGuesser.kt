@@ -14,6 +14,26 @@ object CategoryGuesser {
 
     // Order matters: the first match wins (e.g. "uber eats" is Dining before "uber" is Transport).
     private val EXPENSE = hints(
+        // Before Bank Charges and the rest: "Sparplan … Gebühr" is still an investment.
+        Categories.INVESTMENTS to "trade republic|scalable|scalable capital|traderepublic|degiro|flatex|comdirect|" +
+            "consorsbank|onvista|smartbroker|justtrade|finanzen\\.net zero|interactive brokers|ibkr|etoro|" +
+            "robinhood|vanguard|wertpapier|wertpapiere|wertpapierkauf|depot|sparplan|etf|etfs|aktie|aktien|" +
+            "equities|stocks|shares|brokerage|investment|investments|invest|unit trust|cds|cse",
+        // Money sent home. The payee is usually a person's name, so after the first time the
+        // learnt choice for that name does most of the work.
+        "Family Support" to "family|familie|mother|mom|mum|amma|ammi|thaththa|appachchi|father|dad|parents|" +
+            "mutter|mama|papa|vater|eltern|remittance|remitly|western union|moneygram|worldremit|taptap send|" +
+            "family support|unterhalt|taschengeld",
+        "Sports & Fitness" to "fitness|gym|fitnessstudio|mcfit|fitx|clever fit|john reed|holmes place|urban sports|" +
+            "urban sports club|urbansportsclub|egym|wellpass|sport|sports|sportverein|decathlon|intersport|" +
+            "sportscheck|sport ?scheck|yoga|pilates|boulder|bouldering|kletterhalle|swimming|schwimmbad|" +
+            "tennis|badminton|cricket|football|fussball|fußball|marathon|parkrun",
+        // Cinema, concerts and shows; streaming services stay under subscriptions.
+        "Entertainment" to "cinema|cinemas|kino|cinemaxx|cinestar|uci|yorck|cineplex|scope cinemas|savoy|" +
+            "movie|movies|film|konzert|concert|eventim|ticketmaster|tixforgigs|dice|reservix|theater|theatre|" +
+            "oper|opera|philharmonie|musical|festival|museum|zoo|tierpark|bowling|escape room|freizeitpark",
+        "Gifts" to "gift|gifts|geschenk|geschenke|present|presents|blumen|florist|flowers|fleurop|" +
+            "geburtstag|birthday|wedding gift|hochzeit",
         "Fuel" to "fuel|petrol|diesel|filling station|ceypetco|lioc|octane|tankstelle|aral|shell|esso|jet|agip|" +
             "total ?energies|star tankstelle|orlen",
         "Groceries" to "supermarket|super|keells|cargills|food ?city|arpico|glomark|grocery|groceries|spar|lidl|aldi|" +
@@ -92,7 +112,11 @@ object CategoryGuesser {
         return if (type == TxType.EXPENSE) {
             match(EXPENSE, text).orEmpty()
         } else {
-            match(INCOME, text) ?: if (match(EXPENSE, text) != null) "Refunds" else ""
+            // Money back from a shop is a refund; money from a broker (a sale or payout) is left to the user.
+            match(INCOME, text) ?: when (match(EXPENSE, text)) {
+                null, Categories.INVESTMENTS -> ""
+                else -> "Refunds"
+            }
         }
     }
 
