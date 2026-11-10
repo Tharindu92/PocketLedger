@@ -66,6 +66,8 @@ import com.billbook.app.analysis.InsightsData
 import com.billbook.app.analysis.MonthFlow
 import com.billbook.app.ui.theme.MoneyColors
 import com.billbook.app.util.Money
+import com.billbook.app.ui.components.OneTimeTip
+import com.billbook.app.ui.components.Tips
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
@@ -111,6 +113,13 @@ fun InsightsScreen(onBack: () -> Unit, vm: InsightsViewModel = viewModel(factory
                     onCurrency = vm::setCurrency,
                     onMonths = vm::setMonths,
                     onShift = vm::shift,
+                )
+            }
+            item {
+                OneTimeTip(
+                    Tips.INSIGHTS_PERIOD,
+                    "Use ◀ ▶ to move through months, or Choose… for one month or a range. " +
+                        "Tap a category to see where the money went.",
                 )
             }
             if (data == null || data.isEmpty) {

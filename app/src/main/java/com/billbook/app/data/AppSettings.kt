@@ -45,6 +45,41 @@ class AppSettings(context: Context) {
         prefs.edit().putBoolean(KEY_ONLINE_RATES, enabled).apply()
     }
 
+    /** Welcome screens finished or skipped. */
+    var onboardingDone by mutableStateOf(prefs.getBoolean(KEY_ONBOARDING_DONE, false))
+        private set
+
+    fun updateOnboardingDone(done: Boolean) {
+        onboardingDone = done
+        prefs.edit().putBoolean(KEY_ONBOARDING_DONE, done).apply()
+    }
+
+    /**
+     * The user read what notification access is used for and agreed (Google Play's "prominent
+     * disclosure"); asked before Android's own notification access page is opened.
+     */
+    var notificationConsent by mutableStateOf(prefs.getBoolean(KEY_NOTIFICATION_CONSENT, false))
+        private set
+
+    fun updateNotificationConsent(agreed: Boolean) {
+        notificationConsent = agreed
+        prefs.edit().putBoolean(KEY_NOTIFICATION_CONSENT, agreed).apply()
+    }
+
+    /** One-time tips the user closed. */
+    var seenTips by mutableStateOf(prefs.getStringSet(KEY_SEEN_TIPS, emptySet())?.toSet() ?: emptySet())
+        private set
+
+    fun dismissTip(id: String) {
+        seenTips = seenTips + id
+        prefs.edit().putStringSet(KEY_SEEN_TIPS, seenTips).apply()
+    }
+
+    fun resetTips() {
+        seenTips = emptySet()
+        prefs.edit().remove(KEY_SEEN_TIPS).apply()
+    }
+
     private val _activeProfileId = MutableStateFlow(prefs.getLong(KEY_ACTIVE_PROFILE, Profile.DEFAULT_ID))
     /** Profile shown on the home screen and used for new entries. */
     val activeProfileId: StateFlow<Long> = _activeProfileId.asStateFlow()
@@ -86,6 +121,9 @@ class AppSettings(context: Context) {
         const val KEY_AUTO_ADD = "auto_add_detected"
         const val KEY_ACTIVE_PROFILE = "active_profile"
         const val KEY_ONLINE_RATES = "online_rates"
+        const val KEY_ONBOARDING_DONE = "onboarding_done"
+        const val KEY_NOTIFICATION_CONSENT = "notification_consent"
+        const val KEY_SEEN_TIPS = "seen_tips"
         const val DEFAULT_CURRENCY = "LKR"
     }
 }

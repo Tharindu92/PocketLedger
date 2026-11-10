@@ -103,6 +103,8 @@ import com.billbook.app.data.AppSettings
 import com.billbook.app.data.Categories
 import com.billbook.app.ui.components.SuggestField
 import com.billbook.app.ui.components.NewCategoryChip
+import com.billbook.app.ui.components.OneTimeTip
+import com.billbook.app.ui.components.Tips
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
 import com.billbook.app.data.date
@@ -132,6 +134,7 @@ fun HomeScreen(
     onProfiles: () -> Unit,
     onRules: () -> Unit = {},
     onCategories: () -> Unit = {},
+    onHelp: () -> Unit = {},
     onImportStatement: (Uri) -> Unit = {},
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
@@ -360,11 +363,11 @@ fun HomeScreen(
             }
             if (state.items.isNotEmpty() && !selecting) {
                 item {
-                    Text(
-                        "Long-press an entry to select several",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    OneTimeTip(
+                        Tips.HOME_SELECT,
+                        "Tap an entry to edit it. Long-press to select several and change their category, " +
+                            "move them to another profile or delete them.",
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
             }
@@ -496,6 +499,7 @@ fun HomeScreen(
             settings,
             onRules = { showSettings = false; onRules() },
             onCategories = { showSettings = false; onCategories() },
+            onHelp = { showSettings = false; onHelp() },
         ) { showSettings = false }
     }
 }
@@ -655,7 +659,7 @@ private fun SheetOption(icon: ImageVector, title: String, subtitle: String?, onC
 }
 
 @Composable
-private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategories: () -> Unit, onDismiss: () -> Unit) {
+private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategories: () -> Unit, onHelp: () -> Unit, onDismiss: () -> Unit) {
     var currency by remember { mutableStateOf(settings.currency) }
     var business by remember { mutableStateOf(settings.businessName) }
     var onlineRates by remember { mutableStateOf(settings.onlineRates == true) }
@@ -692,6 +696,7 @@ private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategor
                     }
                     Switch(checked = onlineRates, onCheckedChange = { onlineRates = it })
                 }
+                TextButton(onClick = onHelp) { Text("How Pocket Ledger works") }
                 TextButton(onClick = onCategories) { Text("Categories: add, rename, hide") }
                 TextButton(onClick = onRules) { Text("Category rules you saved") }
             }

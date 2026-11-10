@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Warning
 import com.billbook.app.ui.components.RememberRuleCard
 import com.billbook.app.ui.components.NewCategoryChip
+import com.billbook.app.ui.components.OneTimeTip
+import com.billbook.app.ui.components.Tips
 import com.billbook.app.ui.components.NewCategoryDialog
 import androidx.compose.material.icons.filled.Add
 import kotlinx.coroutines.delay
@@ -186,6 +188,11 @@ private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OneTimeTip(
+                    Tips.IMPORT_REMEMBER,
+                    "Untick bookings you don't want. When you pick a category yourself, tap Remember: " +
+                        "the same payee gets it automatically next time.",
+                )
                 when (result?.source) {
                     BankPdfParser.SOURCE_OCR -> Notice(
                         "This PDF is a scan, so it was read with text recognition. Please check dates, amounts " +

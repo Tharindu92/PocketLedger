@@ -19,6 +19,11 @@ import com.billbook.app.ui.importer.ImportScreen
 import com.billbook.app.ui.insights.InsightsScreen
 import com.billbook.app.ui.rules.RulesScreen
 import com.billbook.app.ui.categories.CategoriesScreen
+import com.billbook.app.ui.help.HelpScreen
+import com.billbook.app.ui.onboarding.WelcomeScreen
+import com.billbook.app.BillBookApp
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import com.billbook.app.ui.statement.StatementScreen
 
 @Composable
@@ -30,7 +35,25 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
             onOpenHandled()
         }
     }
-    NavHost(navController = nav, startDestination = "home") {
+    val settings = (LocalContext.current.applicationContext as BillBookApp).settings
+    val start = remember { if (settings.onboardingDone) "home" else "welcome" }
+    NavHost(navController = nav, startDestination = start) {
+        composable("welcome") {
+            fun goHome() = nav.navigate("home") { popUpTo("welcome") { inclusive = true } }
+            WelcomeScreen(
+                onFinish = ::goHome,
+                onSetUpBank = { goHome(); nav.navigate("bank") },
+            )
+        }
+        composable("help") {
+            HelpScreen(
+                onBack = { nav.popBackStack() },
+                onShowWelcome = {
+                    settings.updateOnboardingDone(false)
+                    nav.navigate("welcome") { popUpTo(0) }
+                },
+            )
+        }
         composable("home") {
             HomeScreen(
                 onOpen = { id -> nav.navigate("edit?id=$id") },
@@ -42,6 +65,7 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 onProfiles = { nav.navigate("profiles") },
                 onRules = { nav.navigate("rules") },
                 onCategories = { nav.navigate("categories") },
+                onHelp = { nav.navigate("help") },
                 onImportStatement = { uri -> nav.navigate("import?uri=${Uri.encode(uri.toString())}") },
             )
         }

@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.billbook.app.bank.InstalledApps
 import com.billbook.app.data.DetectedTransaction
 import com.billbook.app.data.TxType
+import com.billbook.app.ui.components.NotificationDisclosureDialog
 import com.billbook.app.ui.theme.MoneyColors
 import com.billbook.app.util.Money
 import java.time.Instant
@@ -91,6 +92,8 @@ fun BankScreen(
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         canNotify = DetectionNotifier.canPost(context)
     }
+    val settings = (context.applicationContext as com.billbook.app.BillBookApp).settings
+    var disclosing by remember { mutableStateOf(false) }
     val watched = vm.watchedApps
     val byPackage = installed.orEmpty().associateBy { it.packageName }
 
@@ -100,6 +103,17 @@ fun BankScreen(
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(context, "Couldn't open that settings page", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    if (disclosing) {
+        NotificationDisclosureDialog(
+            onAgree = {
+                disclosing = false
+                settings.updateNotificationConsent(true)
+                open(InstalledApps.notificationAccessSettings())
+            },
+            onDismiss = { disclosing = false },
+        )
     }
 
     Scaffold(
@@ -154,7 +168,11 @@ fun BankScreen(
                                     "notifications; Pocket Ledger only looks at the apps you choose below.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                            Button(onClick = { open(InstalledApps.notificationAccessSettings()) }) {
+                            Button(onClick = {
+                                // Google Play: explain and get agreement before Android's access page.
+                                if (settings.notificationConsent) open(InstalledApps.notificationAccessSettings())
+                                else disclosing = true
+                            }) {
                                 Text("Turn on notification access")
                             }
                             if (Build.VERSION.SDK_INT >= 33) {

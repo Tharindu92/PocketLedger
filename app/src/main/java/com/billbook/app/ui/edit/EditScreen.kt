@@ -73,6 +73,8 @@ import com.billbook.app.BillBookApp
 import com.billbook.app.data.Categories
 import com.billbook.app.data.TxType
 import com.billbook.app.ui.components.RememberRuleDialog
+import com.billbook.app.ui.components.OneTimeTip
+import com.billbook.app.ui.components.Tips
 import com.billbook.app.ui.components.DateField
 import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.components.SuggestField
@@ -137,6 +139,14 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                     message = vm.scanMessage,
                     onRescan = vm::rescan,
                     onOpen = { showImage = true },
+                )
+            }
+            val s = vm.suggestions
+            if (!vm.scanning && (s.amounts.size > 1 || s.dates.size > 1 || s.parties.size > 1 || s.billNumbers.size > 1)) {
+                OneTimeTip(
+                    Tips.SCAN_SUGGESTIONS,
+                    "Something read wrong? Tap one of the other suggestions under a field. " +
+                        "For a business name, ⊕ adds that piece to the name.",
                 )
             }
 
