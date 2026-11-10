@@ -16,6 +16,7 @@ import com.billbook.app.ui.bank.BankScreen
 import com.billbook.app.ui.edit.EditScreen
 import com.billbook.app.ui.home.HomeScreen
 import com.billbook.app.ui.importer.ImportScreen
+import com.billbook.app.ui.insights.InsightsScreen
 import com.billbook.app.ui.statement.StatementScreen
 
 @Composable
@@ -34,6 +35,7 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 onAdd = { type -> nav.navigate("edit?type=${type.name}") },
                 onBillImage = { path -> nav.navigate("edit?image=${Uri.encode(path)}") },
                 onStatement = { nav.navigate("statement") },
+                onInsights = { nav.navigate("insights") },
                 onBank = { nav.navigate("bank") },
                 onProfiles = { nav.navigate("profiles") },
                 onImportStatement = { uri -> nav.navigate("import?uri=${Uri.encode(uri.toString())}") },
@@ -66,6 +68,9 @@ fun AppNav(openRequest: String? = null, onOpenHandled: () -> Unit = {}) {
                 detectedId = args?.getLong("detected") ?: 0L,
                 onDone = { nav.popBackStack() },
             )
+        }
+        composable("insights") {
+            InsightsScreen(onBack = { nav.popBackStack() })
         }
         composable("statement") {
             StatementScreen(onBack = { nav.popBackStack() })

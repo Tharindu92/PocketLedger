@@ -21,6 +21,16 @@ interface TransactionDao {
     )
     suspend fun listBetween(profileId: Long, fromDay: Long, toDay: Long): List<Transaction>
 
+    @Query(
+        "SELECT * FROM transactions WHERE dateEpochDay BETWEEN :fromDay AND :toDay " +
+            "ORDER BY dateEpochDay DESC, id DESC"
+    )
+    fun observeAllProfilesBetween(fromDay: Long, toDay: Long): Flow<List<Transaction>>
+
+    /** Day of the oldest entry of a profile, or of all profiles when [profileId] is null. */
+    @Query("SELECT MIN(dateEpochDay) FROM transactions WHERE :profileId IS NULL OR profileId = :profileId")
+    fun observeFirstDay(profileId: Long?): Flow<Long?>
+
     /** Entries of every profile in a date range, for spotting bookings that are already recorded. */
     @Query("SELECT * FROM transactions WHERE dateEpochDay BETWEEN :fromDay AND :toDay")
     suspend fun allBetween(fromDay: Long, toDay: Long): List<Transaction>

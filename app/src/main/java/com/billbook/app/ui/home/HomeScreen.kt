@@ -15,6 +15,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -125,6 +126,7 @@ fun HomeScreen(
     onAdd: (TxType) -> Unit,
     onBillImage: (String) -> Unit,
     onStatement: () -> Unit,
+    onInsights: () -> Unit,
     onBank: () -> Unit,
     onProfiles: () -> Unit,
     onImportStatement: (Uri) -> Unit = {},
@@ -303,6 +305,9 @@ fun HomeScreen(
                 actions = {
                     IconButton(onClick = onBank) {
                         Icon(Icons.Default.AccountBalance, contentDescription = "Bank notifications")
+                    }
+                    IconButton(onClick = onInsights) {
+                        Icon(Icons.Default.Insights, contentDescription = "Insights")
                     }
                     IconButton(onClick = onStatement) {
                         Icon(Icons.Default.Description, contentDescription = "Statement")
