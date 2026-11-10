@@ -10,6 +10,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.billbook.app.BillBookApp
 import com.billbook.app.data.CategoryGuesser
+import com.billbook.app.data.CategoryRule
+import com.billbook.app.ui.components.RuleOffer
 import com.billbook.app.data.Profile
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
@@ -89,6 +91,15 @@ class EditViewModel(
     private var existing: Transaction? = null
     private var saved = false
     private var dateTouched = false
+    private val ruleDao = app.database.categoryRules()
+    /** Category when the form was filled in (loaded, scanned or detected); a change means the user chose. */
+    private var categoryAtStart = ""
+    private var offerAnswered = false
+    private var pendingSave: (() -> Unit)? = null
+
+    /** "Remember this category?" asked when saving, or null. */
+    var ruleOffer by mutableStateOf<RuleOffer?>(null)
+        private set
     private var currencyTouched = false
 
     var form by mutableStateOf(
@@ -138,6 +149,7 @@ class EditViewModel(
                     form = FormState.from(t).let { f ->
                         if (f.currency.isBlank()) f.copy(currency = app.settings.currency) else f
                     }
+                    categoryAtStart = form.category
                     dateTouched = true
                     currencyTouched = true
                 }
@@ -146,6 +158,7 @@ class EditViewModel(
             viewModelScope.launch {
                 app.bankAlerts.get(detectedId)?.let { d ->
                     form = FormState.from(app.bankAlerts.toTransaction(d, app.settings.activeProfileId.value))
+                    categoryAtStart = form.category
                     dateTouched = true
                     currencyTouched = true
                 }
@@ -190,7 +203,9 @@ class EditViewModel(
                     result, overwrite,
                     known = dao.knownParties(),
                     history = CategoryGuesser.learn(dao.partyCategories()),
+                    rules = ruleDao.all(),
                 )
+                categoryAtStart = form.category
             } catch (e: Exception) {
                 scanMessage = "Couldn't read the photo (${e.message ?: "unknown error"}). Please enter details manually."
             } finally {
@@ -204,6 +219,7 @@ class EditViewModel(
         overwrite: Boolean,
         known: List<String>,
         history: Map<Pair<TxType, String>, String>,
+        rules: List<CategoryRule>,
     ) {
         val p = result.parsed
         // A business saved before wins when the scan resembles it: the user's own spelling is
@@ -222,7 +238,9 @@ class EditViewModel(
             // The category used for this business before beats the keyword guess.
             category = pick(
                 f.category,
-                merchant?.let(CategoryGuesser::payeeKey)?.let { history[f.type to it] } ?: p.category,
+                merchant?.let { CategoryGuesser.matchingRule(rules, f.type, listOf(it))?.category }
+                    ?: merchant?.let(CategoryGuesser::payeeKey)?.let { history[f.type to it] }
+                    ?: p.category,
             ),
             paymentMethod = pick(f.paymentMethod, p.paymentMethod),
             date = if (p.date != null && (overwrite || !dateTouched)) p.date else f.date,
@@ -299,9 +317,31 @@ class EditViewModel(
         )
         saved = true
         viewModelScope.launch {
+            // A category the user picked themself: offer to remember it for this payee (once per save).
+            if (!offerAnswered && f.category.trim() != categoryAtStart.trim()) {
+                val offer = CategoryGuesser.offerKeyword(f.party, f.type, f.category.trim(), ruleDao.all())
+                if (offer != null) {
+                    ruleOffer = RuleOffer(offer, f.type, f.category.trim())
+                    pendingSave = onSaved
+                    saved = false
+                    return@launch
+                }
+            }
             val newId = dao.upsert(transaction)
             if (detectedId > 0 && newId > 0) app.bankAlerts.markAdded(detectedId, newId)
             onSaved()
+        }
+    }
+
+    /** Answer to [ruleOffer]: [keyword] to remember, or null for "Not now". Then saves. */
+    fun answerRuleOffer(keyword: String?) {
+        val offer = ruleOffer ?: return
+        val onSaved = pendingSave ?: return
+        ruleOffer = null
+        offerAnswered = true
+        viewModelScope.launch {
+            if (keyword != null) ruleDao.upsert(offer.toRule(keyword))
+            save(onSaved)
         }
     }
 

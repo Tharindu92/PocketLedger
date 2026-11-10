@@ -22,6 +22,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Warning
+import com.billbook.app.ui.components.RememberRuleCard
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -102,13 +110,28 @@ fun ImportScreen(uri: Uri, onDone: () -> Unit) {
         bottomBar = {
             if (stage is ImportViewModel.Stage.Review) {
                 val count = vm.items.count { it.selected }
+                val notice = vm.notice
+                LaunchedEffect(notice) {
+                    if (notice != null) {
+                        delay(4_000)
+                        vm.clearNotice()
+                    }
+                }
                 Surface(tonalElevation = 3.dp) {
-                    Button(
-                        onClick = vm::import,
-                        enabled = count > 0,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    ) {
-                        Text(if (count == 0) "Select bookings to import" else "Import $count ${if (count == 1) "entry" else "entries"}")
+                    Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)) {
+                        vm.offer?.let { offer ->
+                            RememberRuleCard(offer, onRemember = vm::remember, onDismiss = vm::dismissOffer)
+                        }
+                        if (notice != null) {
+                            Text(notice, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Button(
+                            onClick = vm::import,
+                            enabled = count > 0,
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 16.dp),
+                        ) {
+                            Text(if (count == 0) "Select bookings to import" else "Import $count ${if (count == 1) "entry" else "entries"}")
+                        }
                     }
                 }
             }
@@ -148,6 +171,15 @@ private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
     val items = vm.items
     val result = vm.result
     val categories by vm.categories.collectAsStateWithLifecycle()
+    var pickCategory by remember { mutableStateOf(false) }
+    if (pickCategory) {
+        BulkCategoryDialog(
+            ticked = items.filter { it.selected },
+            categories = categories,
+            onPick = vm::setCategoryForSelected,
+            onDismiss = { pickCategory = false },
+        )
+    }
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -190,6 +222,12 @@ private fun ReviewList(vm: ImportViewModel, profiles: List<Profile>) {
                         "Or choose a profile on each booking below.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                }
+                val ticked = items.filter { it.selected }
+                OutlinedButton(onClick = { pickCategory = true }, enabled = ticked.isNotEmpty()) {
+                    Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Set category for ticked bookings")
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -307,6 +345,50 @@ private fun ProfilePicker(selectedId: Long, profiles: List<Profile>, onPick: (Lo
             }
         }
     }
+}
+
+/** Categories for all ticked bookings; expense and income have separate lists, shown only for the types ticked. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BulkCategoryDialog(
+    ticked: List<ImportItem>,
+    categories: Map<TxType, List<String>>,
+    onPick: (TxType, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val types = TxType.entries.filter { type -> ticked.any { it.type == type } }
+    fun entries(n: Int) = if (n == 1) "1 booking" else "$n bookings"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Category for ${entries(ticked.size)}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                types.forEach { type ->
+                    val ofType = ticked.filter { it.type == type }
+                    val current = ofType.map { it.category }.distinct().singleOrNull()
+                    Text(
+                        (if (type == TxType.INCOME) "Income" else "Expenses") +
+                            if (types.size > 1) " (${entries(ofType.size)})" else "",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        categories[type].orEmpty().forEach { name ->
+                            FilterChip(
+                                selected = name == current,
+                                onClick = {
+                                    onPick(type, name)
+                                    if (types.size == 1) onDismiss()
+                                },
+                                label = { Text(name) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 @Composable

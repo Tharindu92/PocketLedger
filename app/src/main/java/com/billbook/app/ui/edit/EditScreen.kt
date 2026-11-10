@@ -72,6 +72,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.billbook.app.BillBookApp
 import com.billbook.app.data.Categories
 import com.billbook.app.data.TxType
+import com.billbook.app.ui.components.RememberRuleDialog
 import com.billbook.app.ui.components.DateField
 import com.billbook.app.ui.components.DisplayDate
 import com.billbook.app.ui.components.SuggestField
@@ -273,6 +274,14 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
                 Text("Save")
             }
         }
+    }
+
+    vm.ruleOffer?.let { offer ->
+        RememberRuleDialog(
+            offer,
+            onRemember = { vm.answerRuleOffer(it) },
+            onDismiss = { vm.answerRuleOffer(null) },
+        )
     }
 
     if (confirmDelete) {

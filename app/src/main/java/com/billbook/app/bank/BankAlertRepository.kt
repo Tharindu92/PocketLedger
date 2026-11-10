@@ -72,6 +72,7 @@ class BankAlertRepository(private val app: BillBookApp) {
             d.type,
             listOf(d.party, d.title, d.text),
             CategoryGuesser.learn(transactions.partyCategories()),
+            app.database.categoryRules().all(),
         ).ifEmpty { if (d.type == TxType.INCOME) "Other income" else "" },
         paymentMethod = if (d.type == TxType.INCOME) "Bank transfer" else "Card",
         notes = "From ${d.appLabel} notification: ${listOf(d.title, d.text).filter { it.isNotBlank() }.joinToString(" – ")}",

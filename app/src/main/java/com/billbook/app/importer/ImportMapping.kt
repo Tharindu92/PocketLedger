@@ -3,6 +3,7 @@ package com.billbook.app.importer
 import com.billbook.app.data.Transaction
 import com.billbook.app.data.TxType
 import com.billbook.app.data.CategoryGuesser
+import com.billbook.app.data.CategoryRule
 import kotlin.math.abs
 
 /** Turns statement lines into entries and spots bookings that are already recorded. Pure Kotlin. */
@@ -13,7 +14,8 @@ object ImportMapping {
         line: StatementLine,
         type: TxType,
         history: Map<Pair<TxType, String>, String> = emptyMap(),
-    ): String = CategoryGuesser.guess(type, listOf(line.party, line.reference, line.kind), history)
+        rules: List<CategoryRule> = emptyList(),
+    ): String = CategoryGuesser.guess(type, listOf(line.party, line.reference, line.kind), history, rules)
 
     /** [category] null means use the guess. */
     fun toTransaction(line: StatementLine, type: TxType, profileId: Long, category: String? = null): Transaction {

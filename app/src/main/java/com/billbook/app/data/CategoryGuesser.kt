@@ -122,13 +122,15 @@ object CategoryGuesser {
 
     /**
      * Best category for an entry of [type] described by [texts] (payee first), or "" when nothing fits.
-     * [history] comes from [learn].
+     * [history] comes from [learn]; [rules] the user asked to remember win over everything.
      */
     fun guess(
         type: TxType,
         texts: List<String>,
         history: Map<Pair<TxType, String>, String> = emptyMap(),
+        rules: List<CategoryRule> = emptyList(),
     ): String {
+        matchingRule(rules, type, texts)?.let { return it.category }
         texts.firstOrNull()?.let(::payeeKey)?.let { history[type to it] }?.let { return it }
         val text = texts.filter { it.isNotBlank() }.joinToString("\n")
         if (text.isBlank()) return ""
@@ -142,6 +144,44 @@ object CategoryGuesser {
             }
         }
     }
+
+    /** The rule whose keyword appears as whole words in [texts]; the longest keyword wins. */
+    fun matchingRule(rules: List<CategoryRule>, type: TxType, texts: List<String>): CategoryRule? {
+        val text = texts.filter { it.isNotBlank() }.joinToString("\n")
+        if (text.isBlank()) return null
+        return rules.filter { it.type == type && keywordRegex(it.keyword).containsMatchIn(text) }
+            .maxByOrNull { it.keyword.length }
+    }
+
+    private fun keywordRegex(keyword: String): Regex {
+        val words = keyword.trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }.joinToString("""\s+""") { Regex.escape(it) }
+        return Regex("""(?<![\p{L}\d])$words(?![\p{L}\d])""", RegexOption.IGNORE_CASE)
+    }
+
+    /**
+     * Keyword to offer when asking to remember a choice: the payee's first two words, as written,
+     * without numbers or legal forms ("REWE Markt GmbH 1234" → "REWE Markt").
+     */
+    fun suggestKeyword(party: String): String =
+        Regex("""\p{L}[\p{L}&'.]*""").findAll(party)
+            .map { it.value.trimEnd('.') }
+            .filter { it.length >= 2 && it.lowercase() !in LEGAL_FORMS }
+            .take(2)
+            .joinToString(" ")
+
+    /**
+     * Keyword to offer after the user chose [category] for [party], or null when there is nothing
+     * to remember (no payee, no category, or a rule already gives this category).
+     */
+    fun offerKeyword(party: String, type: TxType, category: String, rules: List<CategoryRule>): String? {
+        if (category.isBlank()) return null
+        val keyword = suggestKeyword(party).ifBlank { return null }
+        if (matchingRule(rules, type, listOf(party))?.category == category) return null
+        return keyword
+    }
+
+    /** Normalised form a rule is stored under. */
+    fun normaliseKeyword(keyword: String): String = keyword.trim().replace(Regex("""\s+"""), " ").lowercase()
 
     private fun match(hints: List<Pair<String, Regex>>, text: String) =
         hints.firstOrNull { (_, regex) -> regex.containsMatchIn(text) }?.first

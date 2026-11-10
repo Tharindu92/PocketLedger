@@ -98,6 +98,34 @@ class CategoryGuesserTest {
     }
 
     @Test
+    fun rememberedRulesWinOverEverything() {
+        val rules = listOf(
+            CategoryRule("anna", TxType.EXPENSE, "Family Support"),
+            CategoryRule("rewe", TxType.EXPENSE, "Dining"),
+            CategoryRule("rewe markt", TxType.EXPENSE, "Groceries"),
+        )
+        val history = mapOf((TxType.EXPENSE to "anna maria") to "Gifts")
+        assertEquals("Family Support", CategoryGuesser.guess(TxType.EXPENSE, listOf("Anna Maria Beispiel"), history, rules))
+        // Longest keyword wins; whole words only, so "Andreas" doesn't match "anna" style partials.
+        assertEquals("Groceries", CategoryGuesser.guess(TxType.EXPENSE, listOf("REWE  Markt GmbH 1234"), rules = rules))
+        assertEquals("Dining", CategoryGuesser.guess(TxType.EXPENSE, listOf("REWE To Go"), rules = rules))
+        assertEquals("", CategoryGuesser.guess(TxType.EXPENSE, listOf("Annabelle Shop"), rules = rules))
+        // Rules are per type.
+        assertEquals("", CategoryGuesser.guess(TxType.INCOME, listOf("Anna Maria Beispiel"), rules = rules))
+    }
+
+    @Test
+    fun offerToRememberOnlyWhenItAddsSomething() {
+        val rules = listOf(CategoryRule("rewe", TxType.EXPENSE, "Groceries"))
+        assertEquals("PVS BERLIN", CategoryGuesser.offerKeyword("PVS BERLIN-BRANDENBURG-HA", TxType.EXPENSE, "Medical", rules))
+        assertEquals("REWE Markt", CategoryGuesser.offerKeyword("REWE Markt GmbH 1234", TxType.EXPENSE, "Dining", rules))
+        assertEquals(null, CategoryGuesser.offerKeyword("REWE Markt GmbH", TxType.EXPENSE, "Groceries", rules))
+        assertEquals(null, CategoryGuesser.offerKeyword("", TxType.EXPENSE, "Groceries", rules))
+        assertEquals(null, CategoryGuesser.offerKeyword("REWE", TxType.EXPENSE, "", rules))
+        assertEquals("rewe markt", CategoryGuesser.normaliseKeyword("  REWE   Markt "))
+    }
+
+    @Test
     fun payeeKeyIgnoresNumbersAndLegalForm() {
         assertEquals("rewe markt", CategoryGuesser.payeeKey("REWE Markt GmbH 1234"))
         assertEquals("db vertrieb", CategoryGuesser.payeeKey("DB Vertrieb GmbH"))

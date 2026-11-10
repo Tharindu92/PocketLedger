@@ -129,6 +129,7 @@ fun HomeScreen(
     onInsights: () -> Unit,
     onBank: () -> Unit,
     onProfiles: () -> Unit,
+    onRules: () -> Unit = {},
     onImportStatement: (Uri) -> Unit = {},
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
@@ -484,7 +485,9 @@ fun HomeScreen(
         }
     }
 
-    if (showSettings) SettingsDialog(settings) { showSettings = false }
+    if (showSettings) {
+        SettingsDialog(settings, onRules = { showSettings = false; onRules() }) { showSettings = false }
+    }
 }
 
 private val MonthFormat = DateTimeFormatter.ofPattern("MMMM yyyy")
@@ -642,7 +645,7 @@ private fun SheetOption(icon: ImageVector, title: String, subtitle: String?, onC
 }
 
 @Composable
-private fun SettingsDialog(settings: AppSettings, onDismiss: () -> Unit) {
+private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onDismiss: () -> Unit) {
     var currency by remember { mutableStateOf(settings.currency) }
     var business by remember { mutableStateOf(settings.businessName) }
     var onlineRates by remember { mutableStateOf(settings.onlineRates == true) }
@@ -679,6 +682,7 @@ private fun SettingsDialog(settings: AppSettings, onDismiss: () -> Unit) {
                     }
                     Switch(checked = onlineRates, onCheckedChange = { onlineRates = it })
                 }
+                TextButton(onClick = onRules) { Text("Category rules you saved") }
             }
         },
         confirmButton = {

@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.billbook.app.data.Categories
 import com.billbook.app.data.CategoryGuesser
+import com.billbook.app.data.CategoryRule
+import com.billbook.app.ui.components.RuleOffer
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -53,6 +55,8 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
     private var file: File? = null
     /** Category the user gave each payee before. */
     private var history: Map<Pair<TxType, String>, String> = emptyMap()
+    private val ruleDao = app.database.categoryRules()
+    private var rules: List<CategoryRule> = emptyList()
 
     var stage by mutableStateOf<Stage>(Stage.Reading("Reading statement…"))
         private set
@@ -106,6 +110,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
         val existing = app.database.transactions().allBetween(from, to)
         val profile = app.settings.activeProfileId.value
         history = CategoryGuesser.learn(app.database.transactions().partyCategories())
+        rules = ruleDao.all()
         items = parsed.lines.sortedByDescending { it.date }.map { line ->
             val duplicate = ImportMapping.isDuplicate(line, existing)
             val type = if (line.amountCents > 0) TxType.INCOME else TxType.EXPENSE
@@ -114,7 +119,7 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
                 selected = !duplicate,
                 profileId = profile,
                 type = type,
-                category = ImportMapping.guessCategory(line, type, history),
+                category = ImportMapping.guessCategory(line, type, history, rules),
                 duplicate = duplicate,
             )
         }
@@ -126,10 +131,60 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
     /** Switching income/expense also resets the category: the two have different lists. */
     fun toggleType(index: Int) = edit(index) {
         val type = if (it.type == TxType.INCOME) TxType.EXPENSE else TxType.INCOME
-        it.copy(type = type, category = ImportMapping.guessCategory(it.line, type, history))
+        it.copy(type = type, category = ImportMapping.guessCategory(it.line, type, history, rules))
     }
 
-    fun setCategory(index: Int, category: String) = edit(index) { it.copy(category = category, selected = true) }
+    /** Quick option: [category] on every ticked booking of [type]; the other type keeps its own. */
+    fun setCategoryForSelected(type: TxType, category: String) {
+        items = items.map { if (it.selected && it.type == type) it.copy(category = category) else it }
+        // Offer to remember only when every ticked booking of this type is from the same payee.
+        val payees = items.filter { it.selected && it.type == type }.map { CategoryGuesser.payeeKey(it.line.party) }.distinct()
+        offer = payees.singleOrNull()?.let {
+            val party = items.first { i -> i.selected && i.type == type }.line.party
+            CategoryGuesser.offerKeyword(party, type, category, rules)?.let { k -> RuleOffer(k, type, category) }
+        }
+    }
+
+    fun setCategory(index: Int, category: String) {
+        edit(index) { it.copy(category = category, selected = true) }
+        val item = items[index]
+        offer = CategoryGuesser.offerKeyword(item.line.party, item.type, category, rules)
+            ?.let { RuleOffer(it, item.type, category) }
+    }
+
+    /** "Remember this category?" shown after the user picks one, or null. */
+    var offer by mutableStateOf<RuleOffer?>(null)
+        private set
+
+    /** Short confirmation after remembering, e.g. how many other bookings changed. */
+    var notice by mutableStateOf<String?>(null)
+        private set
+
+    fun dismissOffer() { offer = null }
+    fun clearNotice() { notice = null }
+
+    /** Saves the rule and applies it to the other bookings of this statement right away. */
+    fun remember(keyword: String) {
+        val o = offer ?: return
+        offer = null
+        val rule = o.toRule(keyword)
+        rules = rules.filterNot { it.keyword == rule.keyword && it.type == rule.type } + rule
+        var changed = 0
+        items = items.map { item ->
+            val texts = listOf(item.line.party, item.line.reference, item.line.kind)
+            if (item.type == rule.type && item.category != rule.category &&
+                CategoryGuesser.matchingRule(listOf(rule), rule.type, texts) != null
+            ) {
+                changed++
+                item.copy(category = rule.category)
+            } else {
+                item
+            }
+        }
+        notice = "Remembered: “${keyword.trim()}” → ${rule.category}" +
+            if (changed > 0) ". Also set on $changed other ${if (changed == 1) "booking" else "bookings"}." else "."
+        viewModelScope.launch { ruleDao.upsert(rule) }
+    }
 
     /** Category names per type: built-in ones, then custom ones used before. */
     val categories: StateFlow<Map<TxType, List<String>>> = app.database.transactions().observeUsedCategories()
