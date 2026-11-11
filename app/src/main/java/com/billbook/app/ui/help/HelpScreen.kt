@@ -108,7 +108,8 @@ private val SECTIONS = listOf(
         "Your data",
         listOf(
             "Everything is stored on this phone only. There is no account and no server.",
-            "The only internet use is downloading exchange rates, if you allow it: only currency codes and dates are sent.",
+            "Pocket Ledger itself only goes online to download exchange rates, if you allow it: only currency codes and dates are sent.",
+            "Bill reading and the document scanner use Google's on-device ML Kit. It sends Google anonymous diagnostics (phone model, Android version, speed, errors), never your photos or what's on them.",
             "If Android backup is turned on, your entries, settings and bill photos are included, but only when the backup is encrypted with your screen lock. Exported statements are not backed up.",
             "Settings → Backup and restore saves everything (entries, settings, bill photos) to one file, protected with a password if you like. Keep it e.g. in Google Drive, and restore it on a new phone.",
             "Settings → Lock the app: Pocket Ledger then asks for your fingerprint, face or screen lock when you open it (or come back after 30 seconds), hides its preview in recent apps, and shows no amounts in notifications on the lock screen.",
