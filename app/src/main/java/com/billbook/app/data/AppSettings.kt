@@ -66,6 +66,15 @@ class AppSettings(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFICATION_CONSENT, agreed).apply()
     }
 
+    /** Ask for fingerprint / screen lock when opening the app, and hide it in the recent-apps view. */
+    var appLock by mutableStateOf(prefs.getBoolean(KEY_APP_LOCK, false))
+        private set
+
+    fun updateAppLock(enabled: Boolean) {
+        appLock = enabled
+        prefs.edit().putBoolean(KEY_APP_LOCK, enabled).apply()
+    }
+
     /** One-time tips the user closed. */
     var seenTips by mutableStateOf(prefs.getStringSet(KEY_SEEN_TIPS, emptySet())?.toSet() ?: emptySet())
         private set
@@ -124,6 +133,7 @@ class AppSettings(context: Context) {
         const val KEY_ONBOARDING_DONE = "onboarding_done"
         const val KEY_NOTIFICATION_CONSENT = "notification_consent"
         const val KEY_SEEN_TIPS = "seen_tips"
+        const val KEY_APP_LOCK = "app_lock"
         const val DEFAULT_CURRENCY = "LKR"
     }
 }

@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.billbook.app.BillBookApp
 import com.billbook.app.MainActivity
 import com.billbook.app.R
 import com.billbook.app.data.DetectedTransaction
@@ -62,6 +63,18 @@ object DetectionNotifier {
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
+        // With the app lock on, the lock screen shows only that something was detected, no amount or payee.
+        if ((context.applicationContext as BillBookApp).settings.appLock) {
+            builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            builder.setPublicVersion(
+                NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_billbook)
+                    .setContentTitle("Pocket Ledger")
+                    .setContentText("New bank booking detected")
+                    .build()
+            )
+        }
 
         // Android shows at most 3 action buttons.
         if (profiles.size == 1) {

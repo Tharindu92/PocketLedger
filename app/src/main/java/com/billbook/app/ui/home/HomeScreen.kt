@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
 import android.widget.Toast
+import androidx.fragment.app.FragmentActivity
+import com.billbook.app.security.AppLock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
@@ -698,6 +700,7 @@ private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategor
                     }
                     Switch(checked = onlineRates, onCheckedChange = { onlineRates = it })
                 }
+                AppLockRow(settings)
                 TextButton(onClick = onHelp) { Text("How Pocket Ledger works") }
                 TextButton(onClick = onCategories) { Text("Categories: add, rename, hide") }
                 TextButton(onClick = onRules) { Text("Category rules you saved") }
@@ -714,6 +717,42 @@ private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategor
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** Turns the app lock on (after checking the fingerprint / screen lock works) or off, straight away. */
+@Composable
+private fun AppLockRow(settings: AppSettings) {
+    val context = LocalContext.current
+    val available = remember { AppLock.isAvailable(context) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Lock the app", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (available || settings.appLock) {
+                    "Ask for fingerprint, face or screen lock when opening Pocket Ledger, and hide it in recent apps."
+                } else {
+                    "Set up a screen lock on this phone first."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = settings.appLock,
+            enabled = available || settings.appLock,
+            onCheckedChange = { on ->
+                if (!on) {
+                    settings.updateAppLock(false)
+                } else {
+                    (context.findActivity() as? FragmentActivity)?.let { activity ->
+                        AppLock.authenticate(activity, "Turn on app lock", onSuccess = {
+                            settings.updateAppLock(true)
+                            Toast.makeText(context, "App lock is on", Toast.LENGTH_SHORT).show()
+                        })
+                    }
+                }
+            },
+        )
+    }
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
