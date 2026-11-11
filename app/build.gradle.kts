@@ -9,7 +9,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.billbook.app"
+        // Permanent Play Store ID. The Kotlin package (namespace) stays com.billbook.app; the two are independent.
+        applicationId = "io.github.tharindu92.pocketledger"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
