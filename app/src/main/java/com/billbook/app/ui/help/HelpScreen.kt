@@ -110,7 +110,8 @@ private val SECTIONS = listOf(
             "Everything is stored on this phone only. There is no account and no server.",
             "The only internet use is downloading exchange rates, if you allow it: only currency codes and dates are sent.",
             "If Android backup is turned on, your entries, settings and bill photos are included, but only when the backup is encrypted with your screen lock. Exported statements are not backed up.",
-            "Uninstalling the app deletes its data.",
+            "Settings → Backup and restore saves everything (entries, settings, bill photos) to one file, protected with a password if you like. Keep it e.g. in Google Drive, and restore it on a new phone.",
+            "Uninstalling the app deletes its data, so save a backup first.",
         ),
     ),
 )

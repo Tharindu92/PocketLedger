@@ -10,6 +10,8 @@ object Limits {
     const val STATEMENT_BYTES = 20L * 1024 * 1024
     /** Bill photos picked from the gallery or the scanner. */
     const val IMAGE_BYTES = 30L * 1024 * 1024
+    /** A Pocket Ledger backup file to restore (mostly bill photos). */
+    const val BACKUP_BYTES = 1024L * 1024 * 1024
     /** One exchange-rate download (about 10 KB in practice). */
     const val RATES_BYTES = 1L * 1024 * 1024
 

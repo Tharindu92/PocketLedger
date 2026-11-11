@@ -135,6 +135,7 @@ fun HomeScreen(
     onRules: () -> Unit = {},
     onCategories: () -> Unit = {},
     onHelp: () -> Unit = {},
+    onBackup: () -> Unit = {},
     onImportStatement: (Uri) -> Unit = {},
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
@@ -500,6 +501,7 @@ fun HomeScreen(
             onRules = { showSettings = false; onRules() },
             onCategories = { showSettings = false; onCategories() },
             onHelp = { showSettings = false; onHelp() },
+            onBackup = { showSettings = false; onBackup() },
         ) { showSettings = false }
     }
 }
@@ -659,7 +661,7 @@ private fun SheetOption(icon: ImageVector, title: String, subtitle: String?, onC
 }
 
 @Composable
-private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategories: () -> Unit, onHelp: () -> Unit, onDismiss: () -> Unit) {
+private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategories: () -> Unit, onHelp: () -> Unit, onBackup: () -> Unit, onDismiss: () -> Unit) {
     var currency by remember { mutableStateOf(settings.currency) }
     var business by remember { mutableStateOf(settings.businessName) }
     var onlineRates by remember { mutableStateOf(settings.onlineRates == true) }
@@ -699,6 +701,7 @@ private fun SettingsDialog(settings: AppSettings, onRules: () -> Unit, onCategor
                 TextButton(onClick = onHelp) { Text("How Pocket Ledger works") }
                 TextButton(onClick = onCategories) { Text("Categories: add, rename, hide") }
                 TextButton(onClick = onRules) { Text("Category rules you saved") }
+                TextButton(onClick = onBackup) { Text("Backup and restore") }
             }
         },
         confirmButton = {
