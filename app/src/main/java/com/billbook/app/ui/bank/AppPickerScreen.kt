@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -79,7 +80,7 @@ fun AppPickerScreen(onDone: () -> Unit, vm: BankViewModel = viewModel(factory = 
         val others = filtered.filterNot { it.looksFinancial }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             item {

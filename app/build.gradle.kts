@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "com.billbook.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         // Permanent Play Store ID. The Kotlin package (namespace) stays com.billbook.app; the two are independent.
         applicationId = "io.github.tharindu92.pocketledger"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +20,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 15+ always draws apps edge to edge; do it on older versions too so screens look the same.
+        enableEdgeToEdge()
         if (savedInstanceState == null) openRequest.value = intent?.getStringExtra(EXTRA_OPEN)
         setContent {
             BillBookTheme {

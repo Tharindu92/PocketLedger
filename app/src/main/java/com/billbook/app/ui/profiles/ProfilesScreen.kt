@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -121,7 +122,7 @@ fun ProfilesScreen(onBack: () -> Unit, vm: ProfilesViewModel = viewModel(factory
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
             contentPadding = PaddingValues(bottom = 96.dp),
         ) {
             item {

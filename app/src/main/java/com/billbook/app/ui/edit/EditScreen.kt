@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -128,6 +129,7 @@ fun EditScreen(id: Long, type: TxType, imagePath: String?, detectedId: Long = 0,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
