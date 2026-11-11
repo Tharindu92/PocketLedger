@@ -9,6 +9,8 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import com.billbook.app.ocr.OcrLine
 import com.billbook.app.ocr.ReceiptParser
+import com.billbook.app.util.Limits
+import com.billbook.app.util.copyToLimited
 import com.google.mlkit.vision.common.InputImage
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -33,7 +35,12 @@ class StatementReader(private val context: Context) {
         dir.listFiles()?.forEach { it.delete() }
         val file = File(dir, "statement")
         val input = context.contentResolver.openInputStream(uri) ?: throw IOException("Cannot open the file")
-        input.use { i -> file.outputStream().use { i.copyTo(it) } }
+        try {
+            input.use { i -> file.outputStream().use { i.copyToLimited(it, Limits.STATEMENT_BYTES) } }
+        } catch (e: IOException) {
+            file.delete()
+            throw e
+        }
         val head = file.inputStream().use { s -> ByteArray(5).also { s.read(it) } }
         file to if (String(head) == "%PDF-") Kind.PDF else Kind.CSV
     }

@@ -21,13 +21,15 @@ object ImageFiles {
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 
     /** Copies a picked image (gallery / files) into app storage. Returns the new path or null. */
-    fun importFromUri(context: Context, uri: Uri): String? = runCatching {
+    fun importFromUri(context: Context, uri: Uri): String? {
         val target = newImageFile(context)
-        context.contentResolver.openInputStream(uri)!!.use { input ->
-            target.outputStream().use { input.copyTo(it) }
-        }
-        target.absolutePath
-    }.getOrNull()
+        return runCatching {
+            context.contentResolver.openInputStream(uri)!!.use { input ->
+                target.outputStream().use { input.copyToLimited(it, Limits.IMAGE_BYTES) }
+            }
+            target.absolutePath
+        }.onFailure { target.delete() }.getOrNull()
+    }
 
     /** Decodes a down-sampled, correctly rotated bitmap for display. */
     fun loadBitmap(path: String, maxDim: Int): Bitmap? {

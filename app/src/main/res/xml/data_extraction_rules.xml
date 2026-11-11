@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+. Entries, settings and bill photos are backed up. The cache (statement imports,
+  exported PDFs/CSVs) never is. Cloud backup only runs when it is end-to-end encrypted with the
+  phone's screen lock; phone-to-phone transfer always works.
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="bills/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="bills/" />
+    </device-transfer>
+</data-extraction-rules>

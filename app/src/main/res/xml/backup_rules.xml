@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8 to 11: same content as data_extraction_rules.xml; cloud backup only when encrypted (Android 9+). -->
+<full-backup-content>
+    <include domain="database" path="." requireFlags="clientSideEncryption" />
+    <include domain="sharedpref" path="." requireFlags="clientSideEncryption" />
+    <include domain="file" path="bills/" requireFlags="clientSideEncryption" />
+</full-backup-content>

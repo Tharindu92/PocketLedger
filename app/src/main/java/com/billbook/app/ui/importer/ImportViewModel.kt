@@ -26,6 +26,8 @@ import com.billbook.app.data.CategoryCatalog
 import com.billbook.app.data.CategoryGuesser
 import com.billbook.app.data.CategoryRule
 import com.billbook.app.ui.components.RuleOffer
+import com.billbook.app.util.Limits
+import com.billbook.app.util.TooLargeException
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -81,6 +83,8 @@ class ImportViewModel(private val app: BillBookApp, private val uri: Uri) : View
                     }
                 }
                 show(parsed)
+            } catch (e: TooLargeException) {
+                stage = Stage.Failed("This file is larger than ${Limits.mb(e.limit)} MB, which is too big for a bank statement.")
             } catch (e: Exception) {
                 stage = Stage.Failed("Couldn't read this file (${e.message ?: "unknown error"}).")
             }

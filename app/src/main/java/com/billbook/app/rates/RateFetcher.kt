@@ -1,5 +1,7 @@
 package com.billbook.app.rates
 
+import com.billbook.app.util.Limits
+import com.billbook.app.util.readTextLimited
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -47,7 +49,7 @@ object RateFetcher {
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("HTTP ${connection.responseCode}")
             }
-            return connection.inputStream.bufferedReader().use { it.readText() }
+            return connection.inputStream.use { it.readTextLimited(Limits.RATES_BYTES) }
         } finally {
             connection.disconnect()
         }
