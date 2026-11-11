@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,10 +19,33 @@ android {
         versionName = "1.0"
     }
 
+    // The upload key lives outside Git: keystore.properties (git-ignored) holds its path and passwords.
+    val keystoreFile = rootProject.file("keystore.properties")
+    val uploadKey = keystoreFile.takeIf { it.exists() }?.let { f ->
+        Properties().apply { f.inputStream().use { load(it) } }
+    }
+    signingConfigs {
+        if (uploadKey != null) {
+            create("upload") {
+                storeFile = file(uploadKey.getProperty("storeFile"))
+                storePassword = uploadKey.getProperty("storePassword")
+                keyAlias = uploadKey.getProperty("keyAlias")
+                keyPassword = uploadKey.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = when {
+                // -PdebugSignedRelease: installable over the debug build to test the shrunk app
+                project.hasProperty("debugSignedRelease") -> signingConfigs.getByName("debug")
+                uploadKey != null -> signingConfigs.getByName("upload")
+                else -> null
+            }
         }
     }
     compileOptions {
