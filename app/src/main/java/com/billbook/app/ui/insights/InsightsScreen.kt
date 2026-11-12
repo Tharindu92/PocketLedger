@@ -344,7 +344,14 @@ private fun Summary(d: InsightsData, comparedTo: String?) {
         val rate = d.savingsRate
         Text(
             buildString {
-                if (rate != null) append("You kept ${(rate * 100).roundToInt()}% of your income. ")
+                if (rate != null) {
+                    val percent = (rate * 100).roundToInt()
+                    when {
+                        percent > 0 -> append("You kept $percent% of your income. ")
+                        percent < 0 -> append("You spent ${-percent}% more than you earned. ")
+                        else -> append("You spent about what you earned. ")
+                    }
+                }
                 if (d.months.size > 1) append("Average spending ${Money.format(d.averageMonthlyExpense, d.currency)} a month.")
             }.trim(),
             style = MaterialTheme.typography.bodyMedium,
